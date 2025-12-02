@@ -11,9 +11,10 @@ interface CounterViewProps {
   onRename: (id: string, newTitle: string) => void;
   onUpdateTarget: (id: string, target: number | null) => void;
   onDelete: (id: string) => void;
+  isMonochrome?: boolean;
 }
 
-export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpdate, onRename, onUpdateTarget, onDelete }) => {
+export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpdate, onRename, onUpdateTarget, onDelete, isMonochrome = false }) => {
   const [localCount, setLocalCount] = useState(counter.count);
   const [isAnimating, setIsAnimating] = useState<'up' | 'down' | null>(null);
   const [showMenu, setShowMenu] = useState(false);
@@ -28,6 +29,10 @@ export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpd
   const [deleteInput, setDeleteInput] = useState("");
   const DELETE_CONFIRM_TEXT = "yes delete this counter";
 
+  // Determine display colors based on theme
+  const displayColor = isMonochrome ? '#ffffff' : counter.color;
+  const targetReachedColor = isMonochrome ? '#ffffff' : '#4ade80';
+  
   useEffect(() => {
     setLocalCount(counter.count);
   }, [counter.count]);
@@ -98,14 +103,14 @@ export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpd
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-950 relative overflow-hidden">
+    <div className="h-full flex flex-col bg-gray-950 relative overflow-hidden transition-colors duration-500">
       {/* Background glow based on color */}
       <div 
         className={clsx(
           "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-[120px] pointer-events-none transition-all duration-500",
           isTargetReached ? "opacity-40" : "opacity-20"
         )}
-        style={{ backgroundColor: isTargetReached ? '#4ade80' : counter.color }}
+        style={{ backgroundColor: isTargetReached ? targetReachedColor : displayColor }}
       />
 
       {/* Header */}
@@ -118,7 +123,9 @@ export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpd
         </button>
         <div className={clsx(
             "backdrop-blur-md px-3 py-1 rounded-full text-xs font-medium transition-colors",
-            isTargetReached ? "bg-green-500/20 text-green-400 border border-green-500/30" : "bg-gray-800/50 text-gray-300"
+            isTargetReached 
+              ? (isMonochrome ? "bg-white/20 text-white border border-white/30" : "bg-green-500/20 text-green-400 border border-green-500/30") 
+              : "bg-gray-800/50 text-gray-300"
         )}>
              {counter.target ? `${localCount} / ${counter.target}` : 'No Limit'}
         </div>
@@ -147,7 +154,10 @@ export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpd
                         type="text" 
                         value={editTitle}
                         onChange={(e) => setEditTitle(e.target.value)}
-                        className="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
+                        className={clsx(
+                            "w-full bg-gray-950 border rounded-xl px-4 py-3 text-white focus:outline-none transition-colors",
+                            isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-700 focus:border-indigo-500"
+                        )}
                     />
                 </div>
 
@@ -161,7 +171,10 @@ export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpd
                                     type="checkbox"
                                     checked={isTargetEnabled}
                                     onChange={(e) => setIsTargetEnabled(e.target.checked)}
-                                    className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-600 focus:ring-indigo-500" 
+                                    className={clsx(
+                                        "w-4 h-4 rounded border-gray-600 bg-gray-800 focus:ring-offset-gray-900",
+                                        isMonochrome ? "text-white focus:ring-white" : "text-indigo-600 focus:ring-indigo-500"
+                                    )} 
                                 />
                                 Enable Target
                             </label>
@@ -172,7 +185,10 @@ export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpd
                                 value={editTarget}
                                 onChange={(e) => setEditTarget(e.target.value)}
                                 placeholder="Target value"
-                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-white text-sm focus:outline-none focus:border-indigo-500 mt-2"
+                                className={clsx(
+                                    "w-full bg-gray-900 border rounded-lg p-2 text-white text-sm focus:outline-none mt-2 transition-colors",
+                                    isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-700 focus:border-indigo-500"
+                                )}
                             />
                         )}
                     </div>
@@ -180,7 +196,12 @@ export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpd
 
                 <button 
                     onClick={handleSaveChanges}
-                    className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-500 transition shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2"
+                    className={clsx(
+                        "w-full text-white font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2",
+                        isMonochrome 
+                          ? "bg-white text-black hover:bg-gray-200 shadow-white/10" 
+                          : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-900/20"
+                    )}
                 >
                     <Save size={18} /> Save Changes
                 </button>
@@ -258,9 +279,11 @@ export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpd
             "text-9xl font-black tabular-nums transition-all duration-300",
             isAnimating === 'up' && "scale-110",
             isAnimating === 'down' && "scale-90",
-            isTargetReached && "animate-pulse drop-shadow-[0_0_25px_rgba(74,222,128,0.6)]"
+            isTargetReached && "animate-pulse",
+            isTargetReached && !isMonochrome && "drop-shadow-[0_0_25px_rgba(74,222,128,0.6)]",
+            isTargetReached && isMonochrome && "drop-shadow-[0_0_25px_rgba(255,255,255,0.6)]"
           )}
-          style={{ color: isTargetReached ? '#4ade80' : counter.color }}
+          style={{ color: isTargetReached ? targetReachedColor : displayColor }}
         >
           {localCount}
         </div>
@@ -269,23 +292,28 @@ export const CounterView: React.FC<CounterViewProps> = ({ counter, onBack, onUpd
         {counter.target && (
             <div className="mt-8 w-64">
                 <div className="flex justify-between text-xs text-gray-500 mb-2 font-medium">
-                    <span className={isTargetReached ? "text-green-400" : ""}>Progress</span>
-                    <span className={isTargetReached ? "text-green-400" : ""}>{Math.round(calculateProgress())}%</span>
+                    <span className={isTargetReached ? (isMonochrome ? "text-white" : "text-green-400") : ""}>Progress</span>
+                    <span className={isTargetReached ? (isMonochrome ? "text-white" : "text-green-400") : ""}>{Math.round(calculateProgress())}%</span>
                 </div>
                 <div className={clsx(
                     "h-2 w-full bg-gray-900 rounded-full overflow-hidden border transition-colors duration-300",
-                    isTargetReached ? "border-green-500/50 shadow-[0_0_15px_rgba(74,222,128,0.3)]" : "border-gray-800/50"
+                    isTargetReached 
+                        ? (isMonochrome ? "border-white/50 shadow-[0_0_15px_rgba(255,255,255,0.3)]" : "border-green-500/50 shadow-[0_0_15px_rgba(74,222,128,0.3)]") 
+                        : "border-gray-800/50"
                 )}>
                     <div 
                         className="h-full transition-all duration-500 ease-out"
                         style={{ 
                             width: `${calculateProgress()}%`, 
-                            backgroundColor: isTargetReached ? '#4ade80' : counter.color 
+                            backgroundColor: isTargetReached ? targetReachedColor : displayColor 
                         }}
                     />
                 </div>
                 {isTargetReached && (
-                    <div className="text-center mt-3 text-green-400 text-sm font-bold tracking-[0.2em] animate-bounce-short">
+                    <div className={clsx(
+                        "text-center mt-3 text-sm font-bold tracking-[0.2em] animate-bounce-short",
+                        isMonochrome ? "text-white" : "text-green-400"
+                    )}>
                         GOAL REACHED
                     </div>
                 )}

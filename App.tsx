@@ -7,7 +7,6 @@ import {
   History as HistoryIcon, 
   Settings as SettingsIcon,
   Plus,
-  Sparkles,
   LogIn,
   Target,
   Check,
@@ -20,7 +19,8 @@ import {
   Clock,
   Cloud,
   CloudOff,
-  RefreshCw
+  RefreshCw,
+  Zap
 } from 'lucide-react';
 import { Counter, CounterLog, Tab, AppTheme } from './types';
 import { 
@@ -36,7 +36,6 @@ import {
   updateCounterTarget,
   checkDailyResets
 } from './services/firebaseService';
-import { generateInsights } from './services/geminiService';
 import { CounterView } from './components/CounterView';
 import { Settings } from './components/Settings';
 import { CalendarStats } from './components/CalendarStats';
@@ -63,9 +62,10 @@ interface CounterCardProps {
   counter: Counter;
   onClick: () => void;
   viewMode: ViewMode;
+  isMonochrome: boolean;
 }
 
-const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode }) => {
+const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode, isMonochrome }) => {
   const [animClass, setAnimClass] = useState('');
   const [prevCount, setPrevCount] = useState(counter.count);
 
@@ -83,6 +83,10 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode })
   }, [counter.count, prevCount]);
 
   const isTargetReached = counter.target !== undefined && counter.count >= counter.target;
+  
+  // Theme Overrides
+  const displayColor = isMonochrome ? '#ffffff' : counter.color;
+  const targetColor = isMonochrome ? '#ffffff' : '#4ade80';
 
   if (viewMode === 'list') {
       return (
@@ -90,18 +94,20 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode })
             onClick={onClick}
             className={clsx(
                 "w-full bg-gray-900 hover:bg-gray-800 transition-all p-4 rounded-xl border flex items-center justify-between shadow-sm group",
-                isTargetReached ? "border-green-500/30 bg-green-900/5" : "border-gray-800"
+                isTargetReached 
+                    ? (isMonochrome ? "border-white bg-white/10" : "border-green-500/30 bg-green-900/5") 
+                    : "border-gray-800"
             )}
         >
             <div className="flex items-center gap-4">
                 <div 
                     className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-gray-950 relative"
-                    style={{ backgroundColor: isTargetReached ? '#4ade80' : counter.color }}
+                    style={{ backgroundColor: isTargetReached ? targetColor : displayColor }}
                 >
                     {counter.title.charAt(0).toUpperCase()}
                     {counter.resetDaily && (
                         <div className="absolute -bottom-1 -right-1 bg-gray-900 rounded-full p-0.5 border border-gray-700">
-                             <RotateCcw size={8} className="text-blue-400" />
+                             <RotateCcw size={8} className={isMonochrome ? "text-white" : "text-blue-400"} />
                         </div>
                     )}
                 </div>
@@ -117,7 +123,7 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode })
                  {counter.target && (
                     <div className={clsx(
                         "text-[10px] font-semibold flex items-center gap-1",
-                        isTargetReached ? "text-green-400" : "text-gray-600"
+                        isTargetReached ? (isMonochrome ? "text-white" : "text-green-400") : "text-gray-600"
                     )}>
                         <Target size={12} />
                         {Math.round((counter.count / counter.target) * 100)}%
@@ -128,7 +134,7 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode })
                         "text-2xl font-bold transition-transform duration-200",
                         animClass
                     )}
-                    style={{ color: isTargetReached ? '#4ade80' : counter.color }}
+                    style={{ color: isTargetReached ? targetColor : displayColor }}
                 >
                     {counter.count}
                 </span>
@@ -142,7 +148,9 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode })
       onClick={onClick}
       className={clsx(
           "bg-gray-900 hover:bg-gray-800 transition-all p-5 rounded-2xl border flex flex-col items-start space-y-3 shadow-lg relative overflow-hidden group min-h-[160px]",
-          isTargetReached ? "border-green-500/30" : "border-gray-800"
+          isTargetReached 
+             ? (isMonochrome ? "border-white" : "border-green-500/30") 
+             : "border-gray-800"
       )}
     >
       <div 
@@ -150,14 +158,17 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode })
             "absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none transition-opacity duration-500",
             isTargetReached ? "opacity-30" : "opacity-20"
         )}
-        style={{ backgroundColor: isTargetReached ? '#4ade80' : counter.color }}
+        style={{ backgroundColor: isTargetReached ? targetColor : displayColor }}
       ></div>
       
       <div className="flex justify-between w-full items-start">
           <span className="text-gray-400 text-xs font-medium uppercase tracking-wider truncate w-full text-left pr-4">{counter.title}</span>
           {counter.resetDaily && (
-              <div className="bg-blue-900/20 p-1.5 rounded-md border border-blue-500/20" title="Resets Daily">
-                  <RotateCcw size={12} className="text-blue-400" />
+              <div className={clsx(
+                  "p-1.5 rounded-md border",
+                  isMonochrome ? "bg-white/20 border-white/20" : "bg-blue-900/20 border-blue-500/20"
+              )} title="Resets Daily">
+                  <RotateCcw size={12} className={isMonochrome ? "text-white" : "text-blue-400"} />
               </div>
           )}
       </div>
@@ -167,7 +178,7 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode })
             "text-4xl font-bold transition-transform duration-200 origin-left",
             animClass
         )}
-        style={{ color: isTargetReached ? '#4ade80' : counter.color }}
+        style={{ color: isTargetReached ? targetColor : displayColor }}
       >
         {counter.count}
       </span>
@@ -178,7 +189,7 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode })
           {counter.target && (
               <div className={clsx(
                   "text-[10px] font-semibold flex items-center gap-1",
-                  isTargetReached ? "text-green-400" : "text-gray-500"
+                  isTargetReached ? (isMonochrome ? "text-white" : "text-green-400") : "text-gray-500"
               )}>
                   <Target size={10} />
                   {Math.round((counter.count / counter.target) * 100)}%
@@ -204,6 +215,7 @@ export default function App() {
   const [theme, setTheme] = useState<AppTheme>(() => {
     return (localStorage.getItem('app_theme') as AppTheme) || 'default';
   });
+  const isMonochrome = theme === 'pitch-black';
   
   // Create Counter State
   const [newCounterTitle, setNewCounterTitle] = useState("");
@@ -211,9 +223,6 @@ export default function App() {
   const [hasTarget, setHasTarget] = useState(false);
   const [targetValue, setTargetValue] = useState("");
   const [resetDaily, setResetDaily] = useState(true);
-
-  const [aiInsight, setAiInsight] = useState<string | null>(null);
-  const [loadingAi, setLoadingAi] = useState(false);
 
   // Sorting & View
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -398,13 +407,6 @@ export default function App() {
       }
   };
 
-  const handleGetInsights = async () => {
-    setLoadingAi(true);
-    const insight = await generateInsights(counters, logs);
-    setAiInsight(insight);
-    setLoadingAi(false);
-  };
-
   // Render Active Counter Mode
   if (activeCounterId) {
     const counter = counters.find(c => c.id === activeCounterId);
@@ -417,6 +419,7 @@ export default function App() {
           onRename={handleRenameCounter}
           onUpdateTarget={handleUpdateTarget}
           onDelete={handleDeleteCounter}
+          isMonochrome={isMonochrome}
         />
       );
     }
@@ -428,17 +431,43 @@ export default function App() {
       
       {/* Top Bar */}
       <header className="px-6 py-5 flex justify-between items-center bg-gray-950 border-b border-gray-900 sticky top-0 z-10 transition-colors duration-300">
-        <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-violet-400">
+        <h1 className={clsx("text-xl font-bold", isMonochrome ? "text-white" : "bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-violet-400")}>
           TallyMaster
         </h1>
-        {!user && isFirebaseConfigured && (
-            <button 
-                onClick={() => setShowAuthModal(true)}
-                className="flex items-center gap-2 text-xs bg-indigo-600/20 text-indigo-400 px-3 py-1.5 rounded-full hover:bg-indigo-600/30 transition"
-            >
-                <LogIn size={14} /> Sign In
-            </button>
-        )}
+        
+        <div className="flex items-center gap-3">
+            {/* Sync Status Indicator */}
+            <div className="flex items-center justify-center">
+                {user ? (
+                    isSyncing ? (
+                        <div title="Syncing..." className={clsx("transition-colors duration-300", isMonochrome ? "text-white" : "text-yellow-500")}>
+                            <RefreshCw size={18} className="animate-spin" />
+                        </div>
+                    ) : (
+                        <div title="Synced" className={clsx("transition-colors duration-300 relative", isMonochrome ? "text-white" : "text-green-500")}>
+                            <Cloud size={18} fill="currentColor" className="opacity-20" />
+                            <Check size={10} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-bold" strokeWidth={4} />
+                        </div>
+                    )
+                ) : (
+                    <div title="Local Storage (Offline)" className={clsx("transition-colors duration-300", isMonochrome ? "text-gray-500" : "text-red-500/80")}>
+                        <CloudOff size={18} />
+                    </div>
+                )}
+            </div>
+
+            {!user && isFirebaseConfigured && (
+                <button 
+                    onClick={() => setShowAuthModal(true)}
+                    className={clsx(
+                        "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full transition",
+                        isMonochrome ? "bg-white text-black hover:bg-gray-200" : "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30"
+                    )}
+                >
+                    <LogIn size={14} /> Sign In
+                </button>
+            )}
+        </div>
       </header>
 
       {/* Main Content */}
@@ -473,28 +502,44 @@ export default function App() {
                 <div className="flex gap-1 text-xs overflow-x-auto no-scrollbar pb-1">
                      <button 
                         onClick={() => setSortMode('updated')}
-                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", sortMode === 'updated' ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900")}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                            sortMode === 'updated' 
+                                ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
+                                : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
+                        )}
                      >
                         <Calendar size={14} />
                         <span className="hidden sm:inline">Recent</span>
                      </button>
                      <button 
                         onClick={() => setSortMode('created')}
-                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", sortMode === 'created' ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900")}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                            sortMode === 'created' 
+                                ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
+                                : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
+                        )}
                      >
                         <Clock size={14} />
                         <span className="hidden sm:inline">Newest</span>
                      </button>
                      <button 
                         onClick={() => setSortMode('alpha')}
-                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", sortMode === 'alpha' ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900")}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                            sortMode === 'alpha' 
+                                ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
+                                : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
+                        )}
                      >
                         <Type size={14} />
                         <span className="hidden sm:inline">Name</span>
                      </button>
                      <button 
                         onClick={() => setSortMode('value')}
-                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", sortMode === 'value' ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900")}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                            sortMode === 'value' 
+                                ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
+                                : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
+                        )}
                      >
                         <ArrowUpDown size={14} />
                         <span className="hidden sm:inline">Count</span>
@@ -512,6 +557,7 @@ export default function App() {
                   counter={counter} 
                   viewMode={viewMode}
                   onClick={() => setActiveCounterId(counter.id)} 
+                  isMonochrome={isMonochrome}
                 />
               ))}
 
@@ -522,7 +568,10 @@ export default function App() {
                     viewMode === 'grid' ? "p-5 min-h-[160px]" : "p-4 min-h-[80px]"
                 )}
               >
-                <div className="w-8 h-8 rounded-full bg-gray-800 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center transition-colors text-gray-500">
+                <div className={clsx(
+                    "w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center transition-colors text-gray-500",
+                    isMonochrome ? "group-hover:bg-white group-hover:text-black" : "group-hover:bg-indigo-600 group-hover:text-white"
+                )}>
                     <Plus size={16} />
                 </div>
                 {viewMode === 'grid' && <span className="text-sm text-gray-500 group-hover:text-gray-300">New Counter</span>}
@@ -535,34 +584,7 @@ export default function App() {
         {activeTab === 'analytics' && (
           <div className="p-6 space-y-6">
              <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 transition-colors duration-300">
-                <CalendarStats logs={logs} counters={counters} />
-             </div>
-
-             <div className="bg-gradient-to-br from-indigo-900/20 to-violet-900/20 p-6 rounded-2xl border border-indigo-500/20">
-                <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                        <Sparkles size={18} className="text-yellow-400" />
-                        AI Insights
-                    </h3>
-                    {!aiInsight && (
-                        <button 
-                            onClick={handleGetInsights}
-                            disabled={loadingAi}
-                            className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-500 disabled:opacity-50"
-                        >
-                            {loadingAi ? 'Analyzing...' : 'Generate'}
-                        </button>
-                    )}
-                </div>
-                {aiInsight ? (
-                     <p className="text-gray-300 text-sm leading-relaxed animate-fade-in">
-                        {aiInsight}
-                     </p>
-                ) : (
-                    <p className="text-gray-500 text-sm italic">
-                        Unlock patterns in your counting habits powered by Gemini AI.
-                    </p>
-                )}
+                <CalendarStats logs={logs} counters={counters} isMonochrome={isMonochrome} />
              </div>
           </div>
         )}
@@ -574,6 +596,7 @@ export default function App() {
             onClose={() => {}}
             currentTheme={theme}
             onThemeChange={setTheme}
+            isMonochrome={isMonochrome}
           />
         )}
       </main>
@@ -582,45 +605,25 @@ export default function App() {
       <nav className="fixed bottom-0 w-full bg-gray-950/90 backdrop-blur-lg border-t border-gray-900 flex justify-between items-center px-6 py-4 pb-8 z-30 transition-colors duration-300">
         <button 
             onClick={() => setActiveTab('dashboard')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'dashboard' ? "text-indigo-400" : "text-gray-600")}
+            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'dashboard' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-600")}
         >
             <LayoutDashboard size={24} />
             <span className="text-[10px] font-medium">Counters</span>
         </button>
         <button 
             onClick={() => setActiveTab('analytics')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'analytics' ? "text-indigo-400" : "text-gray-600")}
+            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'analytics' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-600")}
         >
             <HistoryIcon size={24} />
             <span className="text-[10px] font-medium">History</span>
         </button>
         <button 
             onClick={() => setActiveTab('settings')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'settings' ? "text-indigo-400" : "text-gray-600")}
+            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'settings' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-600")}
         >
             <SettingsIcon size={24} />
             <span className="text-[10px] font-medium">Settings</span>
         </button>
-        
-        {/* Sync Status Indicator */}
-        <div className="absolute right-4 top-4 flex items-center justify-center">
-            {user ? (
-                isSyncing ? (
-                    <div title="Syncing..." className="animate-spin text-yellow-500">
-                        <RefreshCw size={14} />
-                    </div>
-                ) : (
-                    <div title="Synced" className="text-green-500">
-                        <Cloud size={14} fill="currentColor" className="opacity-20" />
-                        <Check size={8} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-green-500 font-bold" strokeWidth={4} />
-                    </div>
-                )
-            ) : (
-                <div title="Local Storage (Offline)" className="text-gray-700">
-                    <CloudOff size={14} />
-                </div>
-            )}
-        </div>
       </nav>
 
       {/* Auth Modal */}
@@ -641,14 +644,17 @@ export default function App() {
                         autoFocus
                         type="text" 
                         placeholder="e.g., Pushups, Coffees..." 
-                        className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                        className={clsx(
+                            "w-full bg-gray-950 border rounded-xl p-3 text-white placeholder-gray-600 focus:outline-none transition-colors",
+                            isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-800 focus:border-indigo-500"
+                        )}
                         value={newCounterTitle}
                         onChange={(e) => setNewCounterTitle(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleCreateCounter()}
                     />
                 </div>
 
-                {/* Color Picker */}
+                {/* Color Picker (Hide colors if monochrome? User might still want to tag them even if they can't see them in mono mode, keep it.) */}
                 <div className="mb-6">
                     <label className="block text-gray-500 text-xs font-bold uppercase tracking-wider mb-3">Color</label>
                     <div className="flex flex-wrap gap-3">
@@ -677,11 +683,14 @@ export default function App() {
                                 type="checkbox"
                                 checked={resetDaily}
                                 onChange={(e) => setResetDaily(e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500" 
+                                className={clsx(
+                                    "w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-offset-gray-900",
+                                    isMonochrome ? "text-white focus:ring-white" : "text-indigo-600 focus:ring-indigo-500"
+                                )} 
                             />
                             <div className="flex flex-col">
-                                <span className="flex items-center gap-2 text-sm">
-                                    <RotateCcw size={14} className="text-indigo-400" />
+                                <span className={clsx("flex items-center gap-2 text-sm")}>
+                                    <RotateCcw size={14} className={isMonochrome ? "text-white" : "text-indigo-400"} />
                                     Daily Reset
                                 </span>
                                 <span className="text-[10px] text-gray-500">Automatically set count to 0 at midnight</span>
@@ -698,10 +707,13 @@ export default function App() {
                                 type="checkbox"
                                 checked={hasTarget}
                                 onChange={(e) => setHasTarget(e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500" 
+                                className={clsx(
+                                    "w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-offset-gray-900",
+                                    isMonochrome ? "text-white focus:ring-white" : "text-indigo-600 focus:ring-indigo-500"
+                                )} 
                             />
                             <span className="flex items-center gap-2 text-sm">
-                                <Target size={14} className="text-indigo-400" />
+                                <Target size={14} className={isMonochrome ? "text-white" : "text-indigo-400"} />
                                 Enable Target
                             </span>
                         </label>
@@ -712,7 +724,10 @@ export default function App() {
                              <input 
                                 type="number" 
                                 placeholder="Target value (e.g. 100)" 
-                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+                                className={clsx(
+                                    "w-full bg-gray-900 border rounded-lg p-2 text-white text-sm placeholder-gray-600 focus:outline-none",
+                                    isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-700 focus:border-indigo-500"
+                                )}
                                 value={targetValue}
                                 onChange={(e) => setTargetValue(e.target.value)}
                             />
@@ -730,7 +745,10 @@ export default function App() {
                     <button 
                         onClick={handleCreateCounter}
                         disabled={!newCounterTitle.trim()}
-                        className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className={clsx(
+                            "flex-1 py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors",
+                            isMonochrome ? "bg-white text-black hover:bg-gray-200" : "bg-indigo-600 hover:bg-indigo-500"
+                        )}
                     >
                         Create
                     </button>

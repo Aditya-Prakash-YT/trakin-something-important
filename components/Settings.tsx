@@ -10,9 +10,10 @@ interface SettingsProps {
   onClose: () => void;
   currentTheme?: AppTheme;
   onThemeChange?: (theme: AppTheme) => void;
+  isMonochrome?: boolean;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ user, onClose, currentTheme = 'default', onThemeChange }) => {
+export const Settings: React.FC<SettingsProps> = ({ user, onClose, currentTheme = 'default', onThemeChange, isMonochrome = false }) => {
   const [configStr, setConfigStr] = useState<string>(
     JSON.stringify(getStoredConfig() || {}, null, 2)
   );
@@ -129,7 +130,7 @@ export const Settings: React.FC<SettingsProps> = ({ user, onClose, currentTheme 
           <h3 className="font-semibold text-white">Firebase Configuration</h3>
           <button 
             onClick={() => setShowConfig(!showConfig)}
-            className="text-xs text-indigo-400 hover:text-indigo-300"
+            className={clsx("text-xs hover:underline", isMonochrome ? "text-white" : "text-indigo-400")}
           >
             {showConfig ? 'Hide' : 'Edit'}
           </button>
@@ -143,13 +144,19 @@ export const Settings: React.FC<SettingsProps> = ({ user, onClose, currentTheme 
             <textarea
               value={configStr}
               onChange={(e) => setConfigStr(e.target.value)}
-              className="w-full h-48 bg-gray-900 text-gray-300 text-xs p-3 rounded-lg font-mono border border-gray-700 focus:border-indigo-500 focus:outline-none"
+              className={clsx(
+                "w-full h-48 bg-gray-900 text-gray-300 text-xs p-3 rounded-lg font-mono border focus:outline-none",
+                isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-700 focus:border-indigo-500"
+              )}
               placeholder='{ "apiKey": "...", ... }'
             />
             <div className="flex gap-2 mt-3">
               <button 
                 onClick={handleSave}
-                className="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-500 transition font-medium"
+                className={clsx(
+                    "flex-1 py-2 rounded-lg transition font-medium text-white",
+                    isMonochrome ? "bg-white text-black hover:bg-gray-200" : "bg-indigo-600 hover:bg-indigo-500"
+                )}
               >
                 Save & Reload
               </button>
