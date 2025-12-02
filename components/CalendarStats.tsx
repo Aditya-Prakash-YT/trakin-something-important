@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CounterLog, Counter } from '../types';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, subMonths, addMonths, isToday } from 'date-fns';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Filter, X, Clock, Activity } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Filter, X, Clock, Activity, BarChart3 } from 'lucide-react';
 import clsx from 'clsx';
 
 interface CalendarStatsProps {
@@ -56,7 +56,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters }) 
 
   // Details for selected day
   const selectedDayDetails = useMemo(() => {
-    if (!selectedDate) return { logs: [], total: 0 };
+    if (!selectedDate) return { logs: [], summary: [], total: 0 };
     
     // Use filteredLogs to respect the current filter view
     const dayLogs = filteredLogs.filter(log => isSameDay(new Date(log.timestamp), selectedDate));
@@ -64,10 +64,27 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters }) 
     // Sort desc by time
     dayLogs.sort((a, b) => b.timestamp - a.timestamp);
     
+    // Total increments
     const total = dayLogs.reduce((acc, log) => acc + (log.valueChange > 0 ? log.valueChange : 0), 0);
+
+    // Aggregate by counter
+    const statsMap = dayLogs.reduce((acc, log) => {
+        const current = acc.get(log.counterId) || 0;
+        acc.set(log.counterId, current + log.valueChange);
+        return acc;
+    }, new Map<string, number>());
+
+    const summary = Array.from(statsMap.entries()).map(([id, value]) => {
+        const counter = counters.find(c => c.id === id);
+        return {
+            id,
+            value,
+            counter
+        };
+    }).sort((a, b) => b.value - a.value); // Sort by highest value
     
-    return { logs: dayLogs, total };
-  }, [selectedDate, filteredLogs]);
+    return { logs: dayLogs, summary, total };
+  }, [selectedDate, filteredLogs, counters]);
 
   const getCounterInfo = (id: string) => counters.find(c => c.id === id);
 
@@ -202,9 +219,10 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters }) 
             onClick={() => setSelectedDate(null)}
         >
             <div 
-                className="bg-gray-900 w-full max-w-sm rounded-2xl border border-gray-800 shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in zoom-in-95 duration-200" 
+                className="bg-gray-900 w-full max-w-sm rounded-2xl border border-gray-800 shadow-2xl overflow-hidden flex flex-col max-h-[75vh] animate-in zoom-in-95 duration-200" 
                 onClick={e => e.stopPropagation()}
             >
+                {/* Modal Header */}
                 <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
                     <div>
                         <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -222,43 +240,79 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters }) 
                     </button>
                 </div>
                 
-                <div className="overflow-y-auto p-4 space-y-3">
-                    {selectedDayDetails.logs.length === 0 ? (
+                <div className="overflow-y-auto p-4 space-y-6">
+                    {selectedDayDetails.summary.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-gray-500 text-sm gap-2">
                             <Activity size={32} className="opacity-20" />
                             <p>No activity recorded for this day.</p>
                         </div>
                     ) : (
-                        selectedDayDetails.logs.map(log => {
-                            const counter = getCounterInfo(log.counterId);
-                            return (
-                                <div key={log.id} className="flex items-center justify-between bg-gray-950/50 p-3 rounded-xl border border-gray-800/50 hover:border-gray-700 transition-colors">
-                                    <div className="flex items-center gap-3">
-                                        <div 
-                                            className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-gray-950 shadow-sm" 
-                                            style={{ backgroundColor: counter?.color || '#374151' }}
-                                        >
-                                            {counter?.title.charAt(0) || '?'}
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-medium text-gray-200">
-                                                {counter?.title || 'Unknown Counter'}
+                        <>
+                            {/* Summary Section */}
+                            <div className="space-y-3">
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                                    <BarChart3 size={14} />
+                                    Daily Totals
+                                </h4>
+                                <div className="grid gap-2">
+                                    {selectedDayDetails.summary.map(item => (
+                                        <div key={item.id} className="flex items-center justify-between bg-gray-800/40 p-3 rounded-xl border border-gray-800">
+                                            <div className="flex items-center gap-3">
+                                                <div 
+                                                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-gray-950 shadow-sm" 
+                                                    style={{ backgroundColor: item.counter?.color || '#374151' }}
+                                                >
+                                                    {item.counter?.title.charAt(0) || '?'}
+                                                </div>
+                                                <span className="text-sm font-medium text-white">
+                                                    {item.counter?.title || 'Unknown'}
+                                                </span>
                                             </div>
-                                            <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5">
-                                                <Clock size={10} /> 
-                                                {format(new Date(log.timestamp), 'h:mm a')}
+                                            <div className={clsx(
+                                                "font-bold font-mono",
+                                                item.value > 0 ? "text-green-400" : "text-gray-400"
+                                            )}>
+                                                {item.value > 0 ? '+' : ''}{item.value}
                                             </div>
                                         </div>
-                                    </div>
-                                    <div className={clsx(
-                                        "font-bold text-lg", 
-                                        log.valueChange > 0 ? "text-green-400" : "text-red-400"
-                                    )}>
-                                        {log.valueChange > 0 ? '+' : ''}{log.valueChange}
-                                    </div>
+                                    ))}
                                 </div>
-                            )
-                        })
+                            </div>
+
+                            {/* Divider */}
+                            <div className="h-px bg-gray-800/50"></div>
+
+                            {/* Detailed Timeline */}
+                            <div className="space-y-3">
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                                    <Clock size={14} />
+                                    Timeline
+                                </h4>
+                                <div className="space-y-2">
+                                    {selectedDayDetails.logs.map(log => {
+                                        const counter = getCounterInfo(log.counterId);
+                                        return (
+                                            <div key={log.id} className="flex items-center justify-between bg-gray-950/30 p-2.5 rounded-lg border border-gray-800/30">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-gray-500 font-mono bg-gray-900 px-1.5 py-0.5 rounded">
+                                                        {format(new Date(log.timestamp), 'h:mm a')}
+                                                    </span>
+                                                    <span className="text-xs text-gray-400">
+                                                        {counter?.title}
+                                                    </span>
+                                                </div>
+                                                <span className={clsx(
+                                                    "text-xs font-bold", 
+                                                    log.valueChange > 0 ? "text-green-500" : "text-red-500"
+                                                )}>
+                                                    {log.valueChange > 0 ? '+' : ''}{log.valueChange}
+                                                </span>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        </>
                     )}
                 </div>
             </div>

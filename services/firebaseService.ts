@@ -1,4 +1,4 @@
-import * as firebaseApp from "firebase/app";
+import * as firebaseAppModule from "firebase/app";
 import { 
   getAuth, 
   createUserWithEmailAndPassword,
@@ -29,7 +29,9 @@ import {
 import { getStorage, FirebaseStorage } from "firebase/storage";
 import { FirebaseConfig, Counter } from "../types";
 
-// Use any for app to avoid 'FirebaseApp' named export error from firebase/app
+// Workaround for firebase/app type definition issues
+const { initializeApp, getApps, getApp } = (firebaseAppModule as any);
+
 let app: any;
 let auth: Auth | undefined;
 let db: Firestore | undefined;
@@ -81,10 +83,10 @@ export const initFirebase = (): boolean => {
 
   try {
     // Use named imports for firebase/app functions
-    if (!firebaseApp.getApps().length) {
-      app = firebaseApp.initializeApp(config);
+    if (!getApps().length) {
+      app = initializeApp(config);
     } else {
-      app = firebaseApp.getApp();
+      app = getApp();
     }
     auth = getAuth(app);
     db = getFirestore(app);
@@ -128,7 +130,10 @@ export const subscribeToAuth = (callback: (user: User | null) => void) => {
 
 // --- Firestore Operations ---
 
-export const subscribeToCounters = (userId: string, callback: (counters: any[]) => void) => {
+export const subscribeToCounters = (
+  userId: string, 
+  callback: (counters: any[], isSyncing: boolean) => void
+) => {
   if (!db) return () => {};
   
   const q = query(
@@ -136,9 +141,13 @@ export const subscribeToCounters = (userId: string, callback: (counters: any[]) 
     orderBy("lastUpdated", "desc")
   );
 
-  return onSnapshot(q, (snapshot) => {
+  // includeMetadataChanges triggers events for local writes (hasPendingWrites: true)
+  // and server confirmation (hasPendingWrites: false)
+  return onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
     const counters = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    callback(counters);
+    // If hasPendingWrites is true, data is local and not yet on server
+    const isSyncing = snapshot.metadata.hasPendingWrites;
+    callback(counters, isSyncing);
   });
 };
 

@@ -6,34 +6,19 @@
     <title>TallyMaster AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
-            colors: {
-              gray: {
-                850: '#1f2937',
-                900: '#111827',
-                950: '#030712',
-              }
-            },
-            animation: {
-              'bounce-short': 'bounce 0.3s ease-in-out 1',
-              'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            }
-          },
-        },
-      }
-    </script>
     <style>
+      :root {
+        /* Default Theme (Deep Blue/Black) */
+        --c-gray-850: 31 41 55;
+        --c-gray-900: 17 24 39;
+        --c-gray-950: 3 7 18;
+      }
+      
       body {
-        background-color: #030712;
+        background-color: rgb(var(--c-gray-950));
         color: #f3f4f6;
         -webkit-tap-highlight-color: transparent;
+        transition: background-color 0.3s ease;
       }
       /* Hide scrollbar for Chrome, Safari and Opera */
       .no-scrollbar::-webkit-scrollbar {
@@ -45,6 +30,29 @@
         scrollbar-width: none;  /* Firefox */
       }
     </style>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              gray: {
+                850: 'rgb(var(--c-gray-850) / <alpha-value>)',
+                900: 'rgb(var(--c-gray-900) / <alpha-value>)',
+                950: 'rgb(var(--c-gray-950) / <alpha-value>)',
+              }
+            },
+            animation: {
+              'bounce-short': 'bounce 0.3s ease-in-out 1',
+              'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            }
+          },
+        },
+      }
+    </script>
   <script type="importmap">
 {
   "imports": {

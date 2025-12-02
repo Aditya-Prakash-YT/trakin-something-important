@@ -17,9 +17,12 @@ import {
   Calendar,
   Type,
   RotateCcw,
-  Clock
+  Clock,
+  Cloud,
+  CloudOff,
+  RefreshCw
 } from 'lucide-react';
-import { Counter, CounterLog, Tab } from './types';
+import { Counter, CounterLog, Tab, AppTheme } from './types';
 import { 
   initFirebase, 
   subscribeToAuth, 
@@ -195,6 +198,12 @@ export default function App() {
   const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Theme State
+  const [theme, setTheme] = useState<AppTheme>(() => {
+    return (localStorage.getItem('app_theme') as AppTheme) || 'default';
+  });
   
   // Create Counter State
   const [newCounterTitle, setNewCounterTitle] = useState("");
@@ -210,7 +219,27 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [sortMode, setSortMode] = useState<SortMode>('updated');
 
-  // Initialize
+  // Initialize Theme
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'pitch-black') {
+        root.style.setProperty('--c-gray-950', '0 0 0');
+        root.style.setProperty('--c-gray-900', '0 0 0');
+        root.style.setProperty('--c-gray-850', '20 20 20');
+    } else if (theme === 'dark') {
+        root.style.setProperty('--c-gray-950', '24 24 27'); // Zinc 900
+        root.style.setProperty('--c-gray-900', '39 39 42'); // Zinc 800
+        root.style.setProperty('--c-gray-850', '63 63 70'); // Zinc 700
+    } else {
+        // Default
+        root.style.setProperty('--c-gray-950', '3 7 18');
+        root.style.setProperty('--c-gray-900', '17 24 39');
+        root.style.setProperty('--c-gray-850', '31 41 55');
+    }
+    localStorage.setItem('app_theme', theme);
+  }, [theme]);
+
+  // Initialize Firebase
   useEffect(() => {
     const configured = initFirebase();
     setIsFirebaseConfigured(configured);
@@ -244,8 +273,10 @@ export default function App() {
   // Sync counters
   useEffect(() => {
     if (user) {
-      const unsub = subscribeToCounters(user.uid, (data) => {
+      // Pass the callback to handle data and sync status
+      const unsub = subscribeToCounters(user.uid, (data, syncing) => {
         setCounters(data);
+        setIsSyncing(syncing);
       });
       // Fetch initial logs for charts
       getHistoryLogs(user.uid).then(setLogs);
@@ -393,10 +424,10 @@ export default function App() {
 
   // Render Main Layout
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans transition-colors duration-300">
       
       {/* Top Bar */}
-      <header className="px-6 py-5 flex justify-between items-center bg-gray-950 border-b border-gray-900 sticky top-0 z-10">
+      <header className="px-6 py-5 flex justify-between items-center bg-gray-950 border-b border-gray-900 sticky top-0 z-10 transition-colors duration-300">
         <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-violet-400">
           TallyMaster
         </h1>
@@ -424,7 +455,7 @@ export default function App() {
             
             {/* Toolbar */}
             <div className="flex justify-between items-center mb-4">
-                <div className="flex gap-2 bg-gray-900 p-1 rounded-lg">
+                <div className="flex gap-2 bg-gray-900 p-1 rounded-lg transition-colors duration-300">
                     <button 
                         onClick={() => setViewMode('grid')}
                         className={clsx("p-2 rounded-md transition-colors", viewMode === 'grid' ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300")}
@@ -487,7 +518,7 @@ export default function App() {
               <button 
                 onClick={() => setShowAddModal(true)}
                 className={clsx(
-                    "bg-gray-900/50 hover:bg-gray-900 transition rounded-2xl border border-dashed border-gray-800 flex flex-col items-center justify-center space-y-2 group",
+                    "bg-gray-900/50 hover:bg-gray-900 transition rounded-2xl border border-dashed border-gray-800 flex flex-col items-center justify-center space-y-2 group transition-colors duration-300",
                     viewMode === 'grid' ? "p-5 min-h-[160px]" : "p-4 min-h-[80px]"
                 )}
               >
@@ -503,7 +534,7 @@ export default function App() {
         {/* Analytics Tab */}
         {activeTab === 'analytics' && (
           <div className="p-6 space-y-6">
-             <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
+             <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 transition-colors duration-300">
                 <CalendarStats logs={logs} counters={counters} />
              </div>
 
@@ -541,33 +572,55 @@ export default function App() {
           <Settings 
             user={user} 
             onClose={() => {}}
+            currentTheme={theme}
+            onThemeChange={setTheme}
           />
         )}
       </main>
 
       {/* Navigation Tab Bar */}
-      <nav className="fixed bottom-0 w-full bg-gray-950/90 backdrop-blur-lg border-t border-gray-900 flex justify-around py-4 pb-8 z-30">
+      <nav className="fixed bottom-0 w-full bg-gray-950/90 backdrop-blur-lg border-t border-gray-900 flex justify-between items-center px-6 py-4 pb-8 z-30 transition-colors duration-300">
         <button 
             onClick={() => setActiveTab('dashboard')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors", activeTab === 'dashboard' ? "text-indigo-400" : "text-gray-600")}
+            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'dashboard' ? "text-indigo-400" : "text-gray-600")}
         >
             <LayoutDashboard size={24} />
             <span className="text-[10px] font-medium">Counters</span>
         </button>
         <button 
             onClick={() => setActiveTab('analytics')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors", activeTab === 'analytics' ? "text-indigo-400" : "text-gray-600")}
+            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'analytics' ? "text-indigo-400" : "text-gray-600")}
         >
             <HistoryIcon size={24} />
             <span className="text-[10px] font-medium">History</span>
         </button>
         <button 
             onClick={() => setActiveTab('settings')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors", activeTab === 'settings' ? "text-indigo-400" : "text-gray-600")}
+            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'settings' ? "text-indigo-400" : "text-gray-600")}
         >
             <SettingsIcon size={24} />
             <span className="text-[10px] font-medium">Settings</span>
         </button>
+        
+        {/* Sync Status Indicator */}
+        <div className="absolute right-4 top-4 flex items-center justify-center">
+            {user ? (
+                isSyncing ? (
+                    <div title="Syncing..." className="animate-spin text-yellow-500">
+                        <RefreshCw size={14} />
+                    </div>
+                ) : (
+                    <div title="Synced" className="text-green-500">
+                        <Cloud size={14} fill="currentColor" className="opacity-20" />
+                        <Check size={8} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-green-500 font-bold" strokeWidth={4} />
+                    </div>
+                )
+            ) : (
+                <div title="Local Storage (Offline)" className="text-gray-700">
+                    <CloudOff size={14} />
+                </div>
+            )}
+        </div>
       </nav>
 
       {/* Auth Modal */}

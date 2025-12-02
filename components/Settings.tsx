@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
-import { FirebaseConfig } from '../types';
+import { FirebaseConfig, AppTheme } from '../types';
 import { saveConfig, getStoredConfig, clearConfig, isFirebaseReady, logout } from '../services/firebaseService';
 import { User } from 'firebase/auth';
+import { Moon, Sun, Monitor, Smartphone } from 'lucide-react';
+import clsx from 'clsx';
 
 interface SettingsProps {
   user: User | null;
   onClose: () => void;
+  currentTheme?: AppTheme;
+  onThemeChange?: (theme: AppTheme) => void;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ user, onClose }) => {
+export const Settings: React.FC<SettingsProps> = ({ user, onClose, currentTheme = 'default', onThemeChange }) => {
   const [configStr, setConfigStr] = useState<string>(
     JSON.stringify(getStoredConfig() || {}, null, 2)
   );
@@ -38,6 +42,7 @@ export const Settings: React.FC<SettingsProps> = ({ user, onClose }) => {
     <div className="p-6 space-y-6 max-w-md mx-auto pb-24">
       <h2 className="text-2xl font-bold text-white mb-4">Settings</h2>
 
+      {/* User Account Section */}
       {user ? (
         <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
           <div className="flex items-center space-x-3 mb-4">
@@ -63,6 +68,62 @@ export const Settings: React.FC<SettingsProps> = ({ user, onClose }) => {
         </div>
       )}
 
+      {/* App Theme Section */}
+      {onThemeChange && (
+        <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+            <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+                <Monitor size={16} /> App Theme
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+                <button
+                    onClick={() => onThemeChange('default')}
+                    className={clsx(
+                        "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all",
+                        currentTheme === 'default' 
+                            ? "bg-gray-900 border-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.2)]" 
+                            : "bg-gray-900/50 border-gray-700 text-gray-400 hover:border-gray-600"
+                    )}
+                >
+                    <div className="w-full h-8 rounded bg-[#030712] border border-[#1f2937] relative overflow-hidden">
+                        <div className="absolute top-1 left-1 w-4 h-4 rounded bg-[#111827]"></div>
+                    </div>
+                    <span className="text-xs font-medium">Default</span>
+                </button>
+
+                <button
+                    onClick={() => onThemeChange('dark')}
+                    className={clsx(
+                        "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all",
+                        currentTheme === 'dark' 
+                            ? "bg-gray-900 border-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.2)]" 
+                            : "bg-gray-900/50 border-gray-700 text-gray-400 hover:border-gray-600"
+                    )}
+                >
+                    <div className="w-full h-8 rounded bg-[#18181b] border border-[#3f3f46] relative overflow-hidden">
+                         <div className="absolute top-1 left-1 w-4 h-4 rounded bg-[#27272a]"></div>
+                    </div>
+                    <span className="text-xs font-medium">Dark</span>
+                </button>
+
+                <button
+                    onClick={() => onThemeChange('pitch-black')}
+                    className={clsx(
+                        "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all",
+                        currentTheme === 'pitch-black' 
+                            ? "bg-black border-white text-white shadow-[0_0_10px_rgba(255,255,255,0.2)]" 
+                            : "bg-gray-900/50 border-gray-700 text-gray-400 hover:border-gray-600"
+                    )}
+                >
+                    <div className="w-full h-8 rounded bg-black border border-gray-800 relative overflow-hidden">
+                         <div className="absolute top-1 left-1 w-4 h-4 rounded bg-black border border-gray-800"></div>
+                    </div>
+                    <span className="text-xs font-medium">OLED</span>
+                </button>
+            </div>
+        </div>
+      )}
+
+      {/* Firebase Config Section */}
       <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-semibold text-white">Firebase Configuration</h3>

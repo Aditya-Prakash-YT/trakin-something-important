@@ -36,6 +36,6 @@ export interface FirebaseConfig {
   measurementId?: string;
 }
 
-export type Theme = 'dark' | 'light';
+export type AppTheme = 'default' | 'dark' | 'pitch-black';
 
 export type Tab = 'dashboard' | 'analytics' | 'settings';
