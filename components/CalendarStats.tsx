@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { CounterLog, Counter } from '../types';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, subMonths, addMonths, isToday } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Filter, X, Clock, Activity, BarChart3 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -9,6 +8,49 @@ interface CalendarStatsProps {
   counters: Counter[];
   isMonochrome?: boolean;
 }
+
+// --- Date Helper Functions (replacing date-fns) ---
+
+const formatDateKey = (d: Date) => {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+const isSameDay = (d1: Date, d2: Date) => {
+    return d1.getFullYear() === d2.getFullYear() && 
+           d1.getMonth() === d2.getMonth() && 
+           d1.getDate() === d2.getDate();
+}
+
+const isToday = (d: Date) => isSameDay(d, new Date());
+
+const addMonths = (d: Date, n: number) => {
+    const newDate = new Date(d);
+    newDate.setMonth(d.getMonth() + n);
+    return newDate;
+}
+
+const subMonths = (d: Date, n: number) => addMonths(d, -n);
+
+const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+
+const endOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
+const eachDayOfInterval = ({start, end}: {start: Date, end: Date}) => {
+    const days = [];
+    let curr = new Date(start);
+    while (curr <= end) {
+        days.push(new Date(curr));
+        curr.setDate(curr.getDate() + 1);
+    }
+    return days;
+}
+
+const formatMonthYear = (d: Date) => d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const formatDay = (d: Date) => String(d.getDate());
+const formatFullDate = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+const formatTime = (d: Date) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+// --------------------------------------------------
 
 export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, isMonochrome = false }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -26,7 +68,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
     const map = new Map<string, number>();
     
     filteredLogs.forEach(log => {
-      const dayKey = format(new Date(log.timestamp), 'yyyy-MM-dd');
+      const dayKey = formatDateKey(new Date(log.timestamp));
       // Only sum positive increments to show "activity done"
       if (log.valueChange > 0) {
         const current = map.get(dayKey) || 0;
@@ -117,7 +159,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
            <div className="flex items-center gap-2">
               <h2 className={clsx("text-xl font-bold flex items-center gap-2", isMonochrome ? "text-white" : "text-white")}>
                 <CalendarIcon className={isMonochrome ? "text-white" : "text-indigo-400"} size={20} />
-                {format(currentDate, 'MMMM yyyy')}
+                {formatMonthYear(currentDate)}
               </h2>
            </div>
            <div className="flex gap-2">
@@ -175,7 +217,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
             {calendarDays.map((day, i) => {
                 if (!day) return <div key={`pad-${i}`} />;
                 
-                const dayKey = format(day, 'yyyy-MM-dd');
+                const dayKey = formatDateKey(day);
                 const count = dailyData.get(dayKey) || 0;
                 const isCurrentDay = isToday(day);
                 const isSelected = selectedDate && isSameDay(day, selectedDate);
@@ -194,7 +236,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
                         )}
                     >
                         <span className={clsx("text-xs", count > 0 ? "opacity-100" : "opacity-40")}>
-                            {format(day, 'd')}
+                            {formatDay(day)}
                         </span>
                         {count > 0 && (
                             <span className="text-[10px] font-bold mt-0.5">
@@ -237,7 +279,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
                 <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
                     <div>
                         <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                             {format(selectedDate, 'EEEE, MMM do')}
+                             {formatFullDate(selectedDate)}
                         </h3>
                         <p className="text-xs text-gray-400 mt-0.5">
                             {selectedDayDetails.total > 0 ? `${selectedDayDetails.total} updates` : 'No activity'}
@@ -306,7 +348,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
                                             <div key={log.id} className="flex items-center justify-between bg-gray-950/30 p-2.5 rounded-lg border border-gray-800/30">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[10px] text-gray-500 font-mono bg-gray-900 px-1.5 py-0.5 rounded">
-                                                        {format(new Date(log.timestamp), 'h:mm a')}
+                                                        {formatTime(new Date(log.timestamp))}
                                                     </span>
                                                     <span className="text-xs text-gray-400">
                                                         {counter?.title}
