@@ -1,5 +1,5 @@
 {
-  "name": "TallyMaster AI",
-  "description": "A smart, aesthetic tally counter with cloud sync, historical analytics, and AI-powered insights.",
+  "name": "TallyMaster",
+  "description": "A smart, aesthetic tally counter with cloud sync and historical analytics.",
   "requestFramePermissions": []
 }
