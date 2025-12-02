@@ -7,6 +7,8 @@ export interface Counter {
   createdAt: number;
   lastUpdated: number;
   userId?: string;
+  resetDaily?: boolean;
+  lastResetDate?: string; // YYYY-MM-DD string
 }
 
 export interface CounterLog {
@@ -31,6 +33,7 @@ export interface FirebaseConfig {
   storageBucket: string;
   messagingSenderId: string;
   appId: string;
+  measurementId?: string;
 }
 
 export type Theme = 'dark' | 'light';

@@ -1,18 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { Counter, CounterLog } from "../types";
 
-// This expects the API key to be available via environment variable
-// In a real deployed app, you'd proxy this request or ensure env var is set.
-// For this demo, we'll try to use process.env.API_KEY if available.
+// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+// Assume this variable is pre-configured, valid, and accessible.
 
 export const generateInsights = async (
   counters: Counter[],
   logs: CounterLog[]
 ): Promise<string> => {
-  if (!process.env.API_KEY) {
-    return "API Key not configured for Gemini. Please check your setup.";
-  }
-
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   // Prepare data summary
@@ -37,8 +32,13 @@ export const generateInsights = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
+      config: {
+        thinkingConfig: {
+          thinkingBudget: 32768
+        }
+      }
     });
     return response.text || "Could not generate insights.";
   } catch (error) {

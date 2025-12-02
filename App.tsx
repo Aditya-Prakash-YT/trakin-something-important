@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   User, 
-  onAuthStateChanged 
 } from "firebase/auth";
 import { 
   LayoutDashboard, 
@@ -11,7 +10,14 @@ import {
   Sparkles,
   LogIn,
   Target,
-  Check
+  Check,
+  LayoutGrid,
+  List,
+  ArrowUpDown,
+  Calendar,
+  Type,
+  RotateCcw,
+  Clock
 } from 'lucide-react';
 import { Counter, CounterLog, Tab } from './types';
 import { 
@@ -20,15 +26,18 @@ import {
   subscribeToCounters, 
   addCounter, 
   updateCounterValue, 
-  signInWithGoogle,
   deleteCounter,
   getHistoryLogs,
-  isFirebaseReady
+  isFirebaseReady,
+  updateCounterTitle,
+  updateCounterTarget,
+  checkDailyResets
 } from './services/firebaseService';
 import { generateInsights } from './services/geminiService';
 import { CounterView } from './components/CounterView';
 import { Settings } from './components/Settings';
-import { HistoryChart } from './components/HistoryChart';
+import { CalendarStats } from './components/CalendarStats';
+import { AuthModal } from './components/AuthModal';
 import clsx from 'clsx';
 
 // Local storage fallback for demo purposes if no firebase
@@ -44,6 +53,139 @@ const COLORS = [
   { hex: '#f97316', name: 'Orange' },
 ];
 
+type ViewMode = 'grid' | 'list';
+type SortMode = 'updated' | 'alpha' | 'value' | 'created';
+
+interface CounterCardProps {
+  counter: Counter;
+  onClick: () => void;
+  viewMode: ViewMode;
+}
+
+const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode }) => {
+  const [animClass, setAnimClass] = useState('');
+  const [prevCount, setPrevCount] = useState(counter.count);
+
+  useEffect(() => {
+    if (counter.count !== prevCount) {
+      if (counter.count > prevCount) {
+         setAnimClass('scale-110');
+      } else {
+         setAnimClass('scale-90');
+      }
+      setPrevCount(counter.count);
+      const timer = setTimeout(() => setAnimClass(''), 200);
+      return () => clearTimeout(timer);
+    }
+  }, [counter.count, prevCount]);
+
+  const isTargetReached = counter.target !== undefined && counter.count >= counter.target;
+
+  if (viewMode === 'list') {
+      return (
+        <button 
+            onClick={onClick}
+            className={clsx(
+                "w-full bg-gray-900 hover:bg-gray-800 transition-all p-4 rounded-xl border flex items-center justify-between shadow-sm group",
+                isTargetReached ? "border-green-500/30 bg-green-900/5" : "border-gray-800"
+            )}
+        >
+            <div className="flex items-center gap-4">
+                <div 
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-gray-950 relative"
+                    style={{ backgroundColor: isTargetReached ? '#4ade80' : counter.color }}
+                >
+                    {counter.title.charAt(0).toUpperCase()}
+                    {counter.resetDaily && (
+                        <div className="absolute -bottom-1 -right-1 bg-gray-900 rounded-full p-0.5 border border-gray-700">
+                             <RotateCcw size={8} className="text-blue-400" />
+                        </div>
+                    )}
+                </div>
+                <div className="text-left">
+                    <span className="block text-gray-300 font-medium text-sm">{counter.title}</span>
+                    <span className="text-gray-500 text-[10px] flex items-center gap-1">
+                        {counter.resetDaily ? 'Daily Reset' : new Date(counter.lastUpdated).toLocaleDateString()}
+                    </span>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+                 {counter.target && (
+                    <div className={clsx(
+                        "text-[10px] font-semibold flex items-center gap-1",
+                        isTargetReached ? "text-green-400" : "text-gray-600"
+                    )}>
+                        <Target size={12} />
+                        {Math.round((counter.count / counter.target) * 100)}%
+                    </div>
+                )}
+                <span 
+                    className={clsx(
+                        "text-2xl font-bold transition-transform duration-200",
+                        animClass
+                    )}
+                    style={{ color: isTargetReached ? '#4ade80' : counter.color }}
+                >
+                    {counter.count}
+                </span>
+            </div>
+        </button>
+      )
+  }
+
+  return (
+    <button 
+      onClick={onClick}
+      className={clsx(
+          "bg-gray-900 hover:bg-gray-800 transition-all p-5 rounded-2xl border flex flex-col items-start space-y-3 shadow-lg relative overflow-hidden group min-h-[160px]",
+          isTargetReached ? "border-green-500/30" : "border-gray-800"
+      )}
+    >
+      <div 
+        className={clsx(
+            "absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none transition-opacity duration-500",
+            isTargetReached ? "opacity-30" : "opacity-20"
+        )}
+        style={{ backgroundColor: isTargetReached ? '#4ade80' : counter.color }}
+      ></div>
+      
+      <div className="flex justify-between w-full items-start">
+          <span className="text-gray-400 text-xs font-medium uppercase tracking-wider truncate w-full text-left pr-4">{counter.title}</span>
+          {counter.resetDaily && (
+              <div className="bg-blue-900/20 p-1.5 rounded-md border border-blue-500/20" title="Resets Daily">
+                  <RotateCcw size={12} className="text-blue-400" />
+              </div>
+          )}
+      </div>
+
+      <span 
+        className={clsx(
+            "text-4xl font-bold transition-transform duration-200 origin-left",
+            animClass
+        )}
+        style={{ color: isTargetReached ? '#4ade80' : counter.color }}
+      >
+        {counter.count}
+      </span>
+      <div className="flex justify-between items-end w-full mt-auto">
+          <div className="text-gray-600 text-[10px]">
+              {new Date(counter.lastUpdated).toLocaleDateString()}
+          </div>
+          {counter.target && (
+              <div className={clsx(
+                  "text-[10px] font-semibold flex items-center gap-1",
+                  isTargetReached ? "text-green-400" : "text-gray-500"
+              )}>
+                  <Target size={10} />
+                  {Math.round((counter.count / counter.target) * 100)}%
+              </div>
+          )}
+      </div>
+    </button>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [counters, setCounters] = useState<Counter[]>([]);
@@ -52,15 +194,21 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   
   // Create Counter State
   const [newCounterTitle, setNewCounterTitle] = useState("");
   const [newCounterColor, setNewCounterColor] = useState(COLORS[0].hex);
   const [hasTarget, setHasTarget] = useState(false);
   const [targetValue, setTargetValue] = useState("");
+  const [resetDaily, setResetDaily] = useState(true);
 
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
+
+  // Sorting & View
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [sortMode, setSortMode] = useState<SortMode>('updated');
 
   // Initialize
   useEffect(() => {
@@ -70,12 +218,26 @@ export default function App() {
     if (configured) {
       const unsubAuth = subscribeToAuth((u) => {
         setUser(u);
+        if (u) {
+            checkDailyResets(u.uid);
+        }
       });
       return () => unsubAuth();
     } else {
         // Load local counters
         const localData = localStorage.getItem('local_counters');
-        if (localData) setCounters(JSON.parse(localData));
+        if (localData) {
+            // Simple local check for daily resets in demo mode (simplified)
+            const c: Counter[] = JSON.parse(localData);
+            const today = new Date().toISOString().split('T')[0];
+            const updated = c.map(counter => {
+                if (counter.resetDaily && counter.lastResetDate !== today) {
+                    return { ...counter, count: 0, lastResetDate: today };
+                }
+                return counter;
+            });
+            setCounters(updated);
+        }
     }
   }, []);
 
@@ -94,6 +256,21 @@ export default function App() {
     }
   }, [user, counters, isFirebaseConfigured]);
 
+  // Derived state for sorting
+  const sortedCounters = useMemo(() => {
+    const c = [...counters];
+    switch (sortMode) {
+        case 'alpha':
+            return c.sort((a, b) => a.title.localeCompare(b.title));
+        case 'value':
+            return c.sort((a, b) => b.count - a.count);
+        case 'created':
+            return c.sort((a, b) => b.createdAt - a.createdAt);
+        case 'updated':
+        default:
+            return c.sort((a, b) => b.lastUpdated - a.lastUpdated);
+    }
+  }, [counters, sortMode]);
 
   const handleCreateCounter = async () => {
     if (!newCounterTitle.trim()) return;
@@ -101,7 +278,7 @@ export default function App() {
     const target = hasTarget && targetValue ? parseInt(targetValue) : undefined;
 
     if (user) {
-      await addCounter(user.uid, newCounterTitle, newCounterColor, target);
+      await addCounter(user.uid, newCounterTitle, newCounterColor, target, resetDaily);
     } else {
       const newCounter: Counter = {
         id: Date.now().toString(),
@@ -110,7 +287,9 @@ export default function App() {
         color: newCounterColor,
         target,
         createdAt: Date.now(),
-        lastUpdated: Date.now()
+        lastUpdated: Date.now(),
+        resetDaily,
+        lastResetDate: resetDaily ? new Date().toISOString().split('T')[0] : undefined
       };
       setCounters(prev => [newCounter, ...prev]);
     }
@@ -120,13 +299,12 @@ export default function App() {
     setNewCounterColor(COLORS[0].hex);
     setHasTarget(false);
     setTargetValue("");
+    setResetDaily(true);
     setShowAddModal(false);
   };
 
   const handleUpdateCounter = async (id: string, delta: number) => {
     if (user) {
-      // Find current count to update accurately locally or wait for stream?
-      // Optimistic update handled in View, Firestore handles source of truth
       const counter = counters.find(c => c.id === id);
       if(counter) {
           await updateCounterValue(user.uid, id, delta, counter.count + delta);
@@ -151,13 +329,42 @@ export default function App() {
     }
   };
 
-  const handleDeleteCounter = async (id: string) => {
+  const handleRenameCounter = async (id: string, newTitle: string) => {
       if (user) {
-          await deleteCounter(user.uid, id);
+          await updateCounterTitle(user.uid, id, newTitle);
       } else {
-          setCounters(prev => prev.filter(c => c.id !== id));
+          setCounters(prev => prev.map(c => c.id === id ? { ...c, title: newTitle } : c));
       }
-      setActiveCounterId(null);
+  };
+
+  const handleUpdateTarget = async (id: string, newTarget: number | null) => {
+      if (user) {
+          await updateCounterTarget(user.uid, id, newTarget);
+      } else {
+          setCounters(prev => prev.map(c => {
+             if (c.id === id) {
+                 const updated = { ...c };
+                 if (newTarget === null) delete updated.target;
+                 else updated.target = newTarget;
+                 return updated;
+             }
+             return c;
+          }));
+      }
+  };
+
+  const handleDeleteCounter = async (id: string) => {
+      try {
+        if (user) {
+            await deleteCounter(user.uid, id);
+        } else {
+            setCounters(prev => prev.filter(c => c.id !== id));
+        }
+        setActiveCounterId(null);
+      } catch (error) {
+        console.error("Failed to delete counter", error);
+        alert("Failed to delete counter. Please try again.");
+      }
   };
 
   const handleGetInsights = async () => {
@@ -176,6 +383,8 @@ export default function App() {
           counter={counter} 
           onBack={() => setActiveCounterId(null)}
           onUpdate={handleUpdateCounter}
+          onRename={handleRenameCounter}
+          onUpdateTarget={handleUpdateTarget}
           onDelete={handleDeleteCounter}
         />
       );
@@ -193,7 +402,7 @@ export default function App() {
         </h1>
         {!user && isFirebaseConfigured && (
             <button 
-                onClick={signInWithGoogle}
+                onClick={() => setShowAuthModal(true)}
                 className="flex items-center gap-2 text-xs bg-indigo-600/20 text-indigo-400 px-3 py-1.5 rounded-full hover:bg-indigo-600/30 transition"
             >
                 <LogIn size={14} /> Sign In
@@ -213,46 +422,79 @@ export default function App() {
                 </div>
             )}
             
-            <div className="grid grid-cols-2 gap-4">
-              {counters.map(counter => (
-                <button 
-                  key={counter.id}
-                  onClick={() => setActiveCounterId(counter.id)}
-                  className="bg-gray-900 hover:bg-gray-800 transition p-5 rounded-2xl border border-gray-800 flex flex-col items-start space-y-3 shadow-lg relative overflow-hidden group"
-                >
-                  <div 
-                    className="absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none opacity-20"
-                    style={{ backgroundColor: counter.color }}
-                  ></div>
-                  <span className="text-gray-400 text-xs font-medium uppercase tracking-wider truncate w-full text-left">{counter.title}</span>
-                  <span 
-                    className="text-4xl font-bold group-hover:scale-110 transition-transform origin-left"
-                    style={{ color: counter.color }}
-                  >
-                    {counter.count}
-                  </span>
-                  <div className="flex justify-between items-end w-full">
-                      <div className="text-gray-600 text-[10px]">
-                          {new Date(counter.lastUpdated).toLocaleDateString()}
-                      </div>
-                      {counter.target && (
-                          <div className="text-[10px] font-semibold text-gray-500 flex items-center gap-1">
-                              <Target size={10} />
-                              {Math.round((counter.count / counter.target) * 100)}%
-                          </div>
-                      )}
-                  </div>
-                </button>
+            {/* Toolbar */}
+            <div className="flex justify-between items-center mb-4">
+                <div className="flex gap-2 bg-gray-900 p-1 rounded-lg">
+                    <button 
+                        onClick={() => setViewMode('grid')}
+                        className={clsx("p-2 rounded-md transition-colors", viewMode === 'grid' ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300")}
+                    >
+                        <LayoutGrid size={16} />
+                    </button>
+                    <button 
+                         onClick={() => setViewMode('list')}
+                         className={clsx("p-2 rounded-md transition-colors", viewMode === 'list' ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300")}
+                    >
+                        <List size={16} />
+                    </button>
+                </div>
+
+                <div className="flex gap-1 text-xs overflow-x-auto no-scrollbar pb-1">
+                     <button 
+                        onClick={() => setSortMode('updated')}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", sortMode === 'updated' ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900")}
+                     >
+                        <Calendar size={14} />
+                        <span className="hidden sm:inline">Recent</span>
+                     </button>
+                     <button 
+                        onClick={() => setSortMode('created')}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", sortMode === 'created' ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900")}
+                     >
+                        <Clock size={14} />
+                        <span className="hidden sm:inline">Newest</span>
+                     </button>
+                     <button 
+                        onClick={() => setSortMode('alpha')}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", sortMode === 'alpha' ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900")}
+                     >
+                        <Type size={14} />
+                        <span className="hidden sm:inline">Name</span>
+                     </button>
+                     <button 
+                        onClick={() => setSortMode('value')}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", sortMode === 'value' ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900")}
+                     >
+                        <ArrowUpDown size={14} />
+                        <span className="hidden sm:inline">Count</span>
+                     </button>
+                </div>
+            </div>
+
+            <div className={clsx(
+                "grid gap-4",
+                viewMode === 'grid' ? "grid-cols-2" : "grid-cols-1"
+            )}>
+              {sortedCounters.map(counter => (
+                <CounterCard 
+                  key={counter.id} 
+                  counter={counter} 
+                  viewMode={viewMode}
+                  onClick={() => setActiveCounterId(counter.id)} 
+                />
               ))}
 
               <button 
                 onClick={() => setShowAddModal(true)}
-                className="bg-gray-900/50 hover:bg-gray-900 transition p-5 rounded-2xl border border-dashed border-gray-800 flex flex-col items-center justify-center space-y-2 min-h-[140px] group"
+                className={clsx(
+                    "bg-gray-900/50 hover:bg-gray-900 transition rounded-2xl border border-dashed border-gray-800 flex flex-col items-center justify-center space-y-2 group",
+                    viewMode === 'grid' ? "p-5 min-h-[160px]" : "p-4 min-h-[80px]"
+                )}
               >
-                <div className="w-12 h-12 rounded-full bg-gray-800 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center transition-colors text-gray-500">
-                    <Plus size={24} />
+                <div className="w-8 h-8 rounded-full bg-gray-800 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center transition-colors text-gray-500">
+                    <Plus size={16} />
                 </div>
-                <span className="text-sm text-gray-500 group-hover:text-gray-300">New Counter</span>
+                {viewMode === 'grid' && <span className="text-sm text-gray-500 group-hover:text-gray-300">New Counter</span>}
               </button>
             </div>
           </div>
@@ -262,8 +504,7 @@ export default function App() {
         {activeTab === 'analytics' && (
           <div className="p-6 space-y-6">
              <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
-                <h3 className="text-lg font-semibold text-white mb-4">Activity Log (30 Days)</h3>
-                <HistoryChart logs={logs} />
+                <CalendarStats logs={logs} counters={counters} />
              </div>
 
              <div className="bg-gradient-to-br from-indigo-900/20 to-violet-900/20 p-6 rounded-2xl border border-indigo-500/20">
@@ -329,10 +570,15 @@ export default function App() {
         </button>
       </nav>
 
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <AuthModal onClose={() => setShowAuthModal(false)} />
+      )}
+
       {/* Add Counter Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in p-4 sm:p-0">
-            <div className="bg-gray-900 w-full sm:w-96 p-6 rounded-2xl border border-gray-800 shadow-2xl">
+            <div className="bg-gray-900 w-full sm:w-96 p-6 rounded-2xl border border-gray-800 shadow-2xl overflow-y-auto max-h-[90vh]">
                 <h3 className="text-xl font-bold text-white mb-6">Create Counter</h3>
                 
                 {/* Name Input */}
@@ -370,6 +616,27 @@ export default function App() {
                     </div>
                 </div>
 
+                {/* Daily Reset Toggle */}
+                 <div className="mb-4 bg-gray-950 p-4 rounded-xl border border-gray-800">
+                    <div className="flex items-center justify-between">
+                         <label className="flex items-center gap-3 text-white font-medium cursor-pointer select-none w-full">
+                            <input 
+                                type="checkbox"
+                                checked={resetDaily}
+                                onChange={(e) => setResetDaily(e.target.checked)}
+                                className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500" 
+                            />
+                            <div className="flex flex-col">
+                                <span className="flex items-center gap-2 text-sm">
+                                    <RotateCcw size={14} className="text-indigo-400" />
+                                    Daily Reset
+                                </span>
+                                <span className="text-[10px] text-gray-500">Automatically set count to 0 at midnight</span>
+                            </div>
+                        </label>
+                    </div>
+                 </div>
+
                 {/* Target Toggle */}
                 <div className="mb-6 bg-gray-950 p-4 rounded-xl border border-gray-800">
                     <div className="flex items-center justify-between mb-2">
@@ -380,8 +647,8 @@ export default function App() {
                                 onChange={(e) => setHasTarget(e.target.checked)}
                                 className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500" 
                             />
-                            <span className="flex items-center gap-2">
-                                <Target size={16} className="text-indigo-400" />
+                            <span className="flex items-center gap-2 text-sm">
+                                <Target size={14} className="text-indigo-400" />
                                 Enable Target
                             </span>
                         </label>
