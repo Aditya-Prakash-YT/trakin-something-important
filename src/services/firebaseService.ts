@@ -26,7 +26,7 @@ import {
   getDocs,
   deleteField
 } from "firebase/firestore";
-import { FirebaseConfig, Counter } from "../types";
+import { FirebaseConfig, Counter, CounterLog } from "../types";
 
 // Workaround for firebase/app type definition issues
 const { initializeApp, getApps, getApp } = (firebaseAppModule as any);
@@ -208,7 +208,7 @@ export const updateCounterValue = async (userId: string, counterId: string, delt
   await batch.commit();
 };
 
-export const getHistoryLogs = async (userId: string, daysBack: number = 365) => {
+export const getHistoryLogs = async (userId: string, daysBack: number = 365): Promise<CounterLog[]> => {
   if (!db) return [];
   const startDate = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
   const q = query(
@@ -217,7 +217,8 @@ export const getHistoryLogs = async (userId: string, daysBack: number = 365) => 
     orderBy("timestamp", "asc")
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  // Explicitly cast to CounterLog[] to satisfy strict typing in App.tsx
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CounterLog));
 };
 
 export const checkDailyResets = async (userId: string) => {
