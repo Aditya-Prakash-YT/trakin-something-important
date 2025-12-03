@@ -412,15 +412,17 @@ export default function App() {
     const counter = counters.find(c => c.id === activeCounterId);
     if (counter) {
       return (
-        <CounterView 
-          counter={counter} 
-          onBack={() => setActiveCounterId(null)}
-          onUpdate={handleUpdateCounter}
-          onRename={handleRenameCounter}
-          onUpdateTarget={handleUpdateTarget}
-          onDelete={handleDeleteCounter}
-          isMonochrome={isMonochrome}
-        />
+        <div className="h-screen w-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] bg-gray-950">
+            <CounterView 
+            counter={counter} 
+            onBack={() => setActiveCounterId(null)}
+            onUpdate={handleUpdateCounter}
+            onRename={handleRenameCounter}
+            onUpdateTarget={handleUpdateTarget}
+            onDelete={handleDeleteCounter}
+            isMonochrome={isMonochrome}
+            />
+        </div>
       );
     }
   }
@@ -429,8 +431,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans transition-colors duration-300">
       
-      {/* Top Bar */}
-      <header className="px-6 py-5 flex justify-between items-center bg-gray-950 border-b border-gray-900 sticky top-0 z-10 transition-colors duration-300">
+      {/* Top Bar - Added pt-[env(safe-area-inset-top)] for mobile notch support */}
+      <header className="px-6 py-5 pt-[calc(1.25rem+env(safe-area-inset-top))] flex justify-between items-center bg-gray-950 border-b border-gray-900 sticky top-0 z-10 transition-colors duration-300">
         <h1 className={clsx("text-xl font-bold", isMonochrome ? "text-white" : "bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-violet-400")}>
           TallyMaster
         </h1>
@@ -601,8 +603,8 @@ export default function App() {
         )}
       </main>
 
-      {/* Navigation Tab Bar */}
-      <nav className="fixed bottom-0 w-full bg-gray-950/90 backdrop-blur-lg border-t border-gray-900 flex justify-between items-center px-6 py-4 pb-8 z-30 transition-colors duration-300">
+      {/* Navigation Tab Bar - Added pb-[env(safe-area-inset-bottom)] for mobile home bar support */}
+      <nav className="fixed bottom-0 w-full bg-gray-950/90 backdrop-blur-lg border-t border-gray-900 flex justify-between items-center px-6 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] z-30 transition-colors duration-300">
         <button 
             onClick={() => setActiveTab('dashboard')}
             className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'dashboard' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-600")}

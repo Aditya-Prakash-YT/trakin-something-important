@@ -1,4 +1,4 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+import * as firebaseAppModule from "firebase/app";
 import { 
   getAuth, 
   createUserWithEmailAndPassword,
@@ -27,6 +27,9 @@ import {
   deleteField
 } from "firebase/firestore";
 import { FirebaseConfig, Counter } from "../types";
+
+// Workaround for firebase/app type definition issues
+const { initializeApp, getApps, getApp } = (firebaseAppModule as any);
 
 let app: any;
 let auth: Auth | undefined;
@@ -92,7 +95,6 @@ export const initFirebase = (): boolean => {
   }
 };
 
-// ... (Rest of the file remains exactly the same as your previous version)
 // --- Auth Operations ---
 
 export const registerUser = async (name: string, email: string, pass: string) => {

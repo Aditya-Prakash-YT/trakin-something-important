@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>TallyMaster</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
@@ -12,6 +12,12 @@
         --c-gray-850: 31 41 55;
         --c-gray-900: 17 24 39;
         --c-gray-950: 3 7 18;
+        
+        /* Safe Area Variables for Capacitor/Mobile */
+        --sat: env(safe-area-inset-top);
+        --sab: env(safe-area-inset-bottom);
+        --sal: env(safe-area-inset-left);
+        --sar: env(safe-area-inset-right);
       }
       
       body {
@@ -19,6 +25,8 @@
         color: #f3f4f6;
         -webkit-tap-highlight-color: transparent;
         transition: background-color 0.3s ease;
+        /* Prevent bounce scroll on mobile */
+        overscroll-behavior-y: none;
       }
       /* Hide scrollbar for Chrome, Safari and Opera */
       .no-scrollbar::-webkit-scrollbar {
@@ -64,13 +72,6 @@
     "clsx": "https://aistudiocdn.com/clsx@^2.1.1",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
     "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
-    "react-native": "https://aistudiocdn.com/react-native@^0.82.1",
-    "lucide-react-native": "https://aistudiocdn.com/lucide-react-native@^0.555.0",
-    "react-native-safe-area-context": "https://aistudiocdn.com/react-native-safe-area-context@^5.6.2",
-    "@react-native-async-storage/async-storage": "https://aistudiocdn.com/@react-native-async-storage/async-storage@^2.2.0",
-    "expo-status-bar": "https://aistudiocdn.com/expo-status-bar@^3.0.8",
-    "expo-av": "https://aistudiocdn.com/expo-av@^16.0.7",
-    "expo-haptics": "https://aistudiocdn.com/expo-haptics@^15.0.7",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
     "vite": "https://aistudiocdn.com/vite@^7.2.6"
   }
