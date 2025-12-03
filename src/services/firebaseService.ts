@@ -38,13 +38,14 @@ let db: Firestore | undefined;
 const STORAGE_KEY_CONFIG = 'tally_firebase_config';
 
 // 1. Try Environment Variables first (For your deployed website)
-const ENV_CONFIG: FirebaseConfig | null = import.meta.env.VITE_API_KEY ? {
-  apiKey: import.meta.env.VITE_API_KEY,
-  authDomain: import.meta.env.VITE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_APP_ID
+// Using (import.meta as any) to bypass TypeScript error "Property 'env' does not exist on type 'ImportMeta'"
+const ENV_CONFIG: FirebaseConfig | null = (import.meta as any).env.VITE_API_KEY ? {
+  apiKey: (import.meta as any).env.VITE_API_KEY,
+  authDomain: (import.meta as any).env.VITE_AUTH_DOMAIN,
+  projectId: (import.meta as any).env.VITE_PROJECT_ID,
+  storageBucket: (import.meta as any).env.VITE_STORAGE_BUCKET,
+  messagingSenderId: (import.meta as any).env.VITE_MESSAGING_SENDER_ID,
+  appId: (import.meta as any).env.VITE_APP_ID
 } : null;
 
 // 2. Hardcoded fallback (Only for local dev if you don't use .env)
