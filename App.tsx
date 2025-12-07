@@ -14,15 +14,18 @@ import {
   List,
   ArrowUpDown,
   Calendar,
-  Type,
   RotateCcw,
-  Clock,
   Cloud,
   CloudOff,
   RefreshCw,
-  Zap
+  Folder,
+  CheckSquare,
+  Square,
+  X,
+  Trash2,
+  CheckCircle2
 } from 'lucide-react';
-import { Counter, CounterLog, Tab, AppTheme } from './types';
+import { Counter, CounterLog, Tab, AppTheme, CounterGroup } from './types';
 import { 
   initFirebase, 
   subscribeToAuth, 
@@ -34,16 +37,17 @@ import {
   isFirebaseReady,
   updateCounterTitle,
   updateCounterTarget,
-  checkDailyResets
+  checkDailyResets,
+  subscribeToGroups,
+  addGroup,
+  deleteGroup,
+  updateCounterGroup
 } from './services/firebaseService';
 import { CounterView } from './components/CounterView';
 import { Settings } from './components/Settings';
 import { CalendarStats } from './components/CalendarStats';
 import { AuthModal } from './components/AuthModal';
 import clsx from 'clsx';
-
-// Local storage fallback for demo purposes if no firebase
-const USE_LOCAL_STORAGE = !isFirebaseReady();
 
 const COLORS = [
   { hex: '#6366f1', name: 'Indigo' },
@@ -63,9 +67,20 @@ interface CounterCardProps {
   onClick: () => void;
   viewMode: ViewMode;
   isMonochrome: boolean;
+  selectionMode: boolean;
+  isSelected: boolean;
+  onToggleSelection: () => void;
 }
 
-const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode, isMonochrome }) => {
+const CounterCard: React.FC<CounterCardProps> = ({ 
+    counter, 
+    onClick, 
+    viewMode, 
+    isMonochrome, 
+    selectionMode, 
+    isSelected, 
+    onToggleSelection 
+}) => {
   const [animClass, setAnimClass] = useState('');
   const [prevCount, setPrevCount] = useState(counter.count);
 
@@ -88,18 +103,33 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode, i
   const displayColor = isMonochrome ? '#ffffff' : counter.color;
   const targetColor = isMonochrome ? '#ffffff' : '#4ade80';
 
+  const handleClick = (e: React.MouseEvent) => {
+      if (selectionMode) {
+          e.preventDefault();
+          onToggleSelection();
+      } else {
+          onClick();
+      }
+  };
+
   if (viewMode === 'list') {
       return (
         <button 
-            onClick={onClick}
+            onClick={handleClick}
             className={clsx(
-                "w-full bg-gray-900 hover:bg-gray-800 transition-all p-4 rounded-xl border flex items-center justify-between shadow-sm group",
+                "w-full bg-gray-900 transition-all p-4 rounded-xl border flex items-center justify-between shadow-sm group relative",
                 isTargetReached 
                     ? (isMonochrome ? "border-white bg-white/10" : "border-green-500/30 bg-green-900/5") 
-                    : "border-gray-800"
+                    : (isSelected && selectionMode ? "border-indigo-500 bg-indigo-900/20" : "border-gray-800 hover:bg-gray-800")
             )}
         >
             <div className="flex items-center gap-4">
+                {selectionMode && (
+                    <div className="mr-2">
+                        {isSelected ? <CheckSquare className="text-indigo-400" /> : <Square className="text-gray-600" />}
+                    </div>
+                )}
+                
                 <div 
                     className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-gray-950 relative"
                     style={{ backgroundColor: isTargetReached ? targetColor : displayColor }}
@@ -145,14 +175,25 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode, i
 
   return (
     <button 
-      onClick={onClick}
+      onClick={handleClick}
       className={clsx(
-          "bg-gray-900 hover:bg-gray-800 transition-all p-5 rounded-2xl border flex flex-col items-start space-y-3 shadow-lg relative overflow-hidden group min-h-[160px]",
+          "bg-gray-900 transition-all p-5 rounded-2xl border flex flex-col items-start space-y-3 shadow-lg relative overflow-hidden group min-h-[160px]",
           isTargetReached 
              ? (isMonochrome ? "border-white" : "border-green-500/30") 
-             : "border-gray-800"
+             : (isSelected && selectionMode ? "border-indigo-500 ring-1 ring-indigo-500/50" : "border-gray-800 hover:bg-gray-800")
       )}
     >
+      {/* Selection Overlay Checkbox */}
+      {selectionMode && (
+          <div className="absolute top-3 right-3 z-20">
+              {isSelected ? (
+                  <CheckCircle2 className="text-white fill-indigo-500" size={24} />
+              ) : (
+                  <div className="w-6 h-6 rounded-full border-2 border-gray-600 bg-black/40" />
+              )}
+          </div>
+      )}
+
       <div 
         className={clsx(
             "absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none transition-opacity duration-500",
@@ -203,13 +244,19 @@ const CounterCard: React.FC<CounterCardProps> = ({ counter, onClick, viewMode, i
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [counters, setCounters] = useState<Counter[]>([]);
+  const [groups, setGroups] = useState<CounterGroup[]>([]);
   const [logs, setLogs] = useState<CounterLog[]>([]);
   const [activeCounterId, setActiveCounterId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showGroupModal, setShowGroupModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Selection Mode State
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   // Theme State
   const [theme, setTheme] = useState<AppTheme>(() => {
@@ -220,6 +267,7 @@ export default function App() {
   // Create Counter State
   const [newCounterTitle, setNewCounterTitle] = useState("");
   const [newCounterColor, setNewCounterColor] = useState(COLORS[0].hex);
+  const [newCounterGroupId, setNewCounterGroupId] = useState("");
   const [hasTarget, setHasTarget] = useState(false);
   const [targetValue, setTargetValue] = useState("");
   const [resetDaily, setResetDaily] = useState(true);
@@ -262,63 +310,109 @@ export default function App() {
       });
       return () => unsubAuth();
     } else {
-        // Load local counters
+        // Load local counters (legacy support)
         const localData = localStorage.getItem('local_counters');
         if (localData) {
-            // Simple local check for daily resets in demo mode (simplified)
             const c: Counter[] = JSON.parse(localData);
-            const today = new Date().toISOString().split('T')[0];
-            const updated = c.map(counter => {
-                if (counter.resetDaily && counter.lastResetDate !== today) {
-                    return { ...counter, count: 0, lastResetDate: today };
-                }
-                return counter;
-            });
-            setCounters(updated);
+            setCounters(c);
         }
     }
   }, []);
 
-  // Sync counters
+  // Sync counters and groups
   useEffect(() => {
     if (user) {
-      // Pass the callback to handle data and sync status
-      const unsub = subscribeToCounters(user.uid, (data, syncing) => {
+      const unsubCounters = subscribeToCounters(user.uid, (data, syncing) => {
         setCounters(data);
         setIsSyncing(syncing);
       });
-      // Fetch initial logs for charts
+      const unsubGroups = subscribeToGroups(user.uid, (data) => {
+        setGroups(data);
+      });
+      
       getHistoryLogs(user.uid).then(setLogs);
-      return () => unsub();
+      
+      return () => {
+        unsubCounters();
+        unsubGroups();
+      };
     } else if (!isFirebaseConfigured) {
         // Sync to local storage
         localStorage.setItem('local_counters', JSON.stringify(counters));
     }
-  }, [user, counters, isFirebaseConfigured]);
+  }, [user, counters.length, isFirebaseConfigured]); // Depend on counters.length for local storage sync only
 
-  // Derived state for sorting
-  const sortedCounters = useMemo(() => {
+  // Group Management Handlers
+  const handleAddGroup = async (name: string) => {
+    if (user) {
+      await addGroup(user.uid, name);
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    if (user) {
+      await deleteGroup(user.uid, groupId);
+    }
+  };
+
+  const handleUpdateCounterGroup = async (id: string, groupId: string | null) => {
+      if (user) {
+          await updateCounterGroup(user.uid, id, groupId);
+      } else {
+          setCounters(prev => prev.map(c => c.id === id ? { ...c, groupId: groupId || undefined } : c));
+      }
+  };
+
+
+  // Derived state for sorting and grouping
+  const groupedCounters = useMemo(() => {
+    // 1. Sort counters first
     const c = [...counters];
+    let sorted = c;
     switch (sortMode) {
         case 'alpha':
-            return c.sort((a, b) => a.title.localeCompare(b.title));
+            sorted = c.sort((a, b) => a.title.localeCompare(b.title));
+            break;
         case 'value':
-            return c.sort((a, b) => b.count - a.count);
+            sorted = c.sort((a, b) => b.count - a.count);
+            break;
         case 'created':
-            return c.sort((a, b) => b.createdAt - a.createdAt);
+            sorted = c.sort((a, b) => b.createdAt - a.createdAt);
+            break;
         case 'updated':
         default:
-            return c.sort((a, b) => b.lastUpdated - a.lastUpdated);
+            sorted = c.sort((a, b) => b.lastUpdated - a.lastUpdated);
+            break;
     }
-  }, [counters, sortMode]);
+
+    // 2. Group them
+    const sections: { id: string, name: string, counters: Counter[] }[] = [];
+    
+    // Ungrouped
+    const ungrouped = sorted.filter(c => !c.groupId || !groups.find(g => g.id === c.groupId));
+    if (ungrouped.length > 0) {
+        sections.push({ id: 'ungrouped', name: 'Ungrouped', counters: ungrouped });
+    }
+
+    // Grouped Sections
+    groups.forEach(g => {
+        const groupCounters = sorted.filter(c => c.groupId === g.id);
+        if (groupCounters.length > 0) {
+            sections.push({ id: g.id, name: g.name, counters: groupCounters });
+        }
+    });
+
+    return sections;
+  }, [counters, groups, sortMode]);
 
   const handleCreateCounter = async () => {
     if (!newCounterTitle.trim()) return;
     
     const target = hasTarget && targetValue ? parseInt(targetValue) : undefined;
+    const groupId = newCounterGroupId || undefined;
 
     if (user) {
-      await addCounter(user.uid, newCounterTitle, newCounterColor, target, resetDaily);
+      await addCounter(user.uid, newCounterTitle, newCounterColor, target, resetDaily, groupId);
     } else {
       const newCounter: Counter = {
         id: Date.now().toString(),
@@ -329,7 +423,8 @@ export default function App() {
         createdAt: Date.now(),
         lastUpdated: Date.now(),
         resetDaily,
-        lastResetDate: resetDaily ? new Date().toISOString().split('T')[0] : undefined
+        lastResetDate: resetDaily ? new Date().toISOString().split('T')[0] : undefined,
+        groupId
       };
       setCounters(prev => [newCounter, ...prev]);
     }
@@ -340,6 +435,7 @@ export default function App() {
     setHasTarget(false);
     setTargetValue("");
     setResetDaily(true);
+    setNewCounterGroupId("");
     setShowAddModal(false);
   };
 
@@ -407,6 +503,38 @@ export default function App() {
       }
   };
 
+  // Selection Logic
+  const toggleSelection = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedIds(newSet);
+  };
+
+  const handleSelectAll = () => {
+      if (selectedIds.size === counters.length) {
+          setSelectedIds(new Set());
+      } else {
+          setSelectedIds(new Set(counters.map(c => c.id)));
+      }
+  };
+
+  const handleExitSelectionMode = () => {
+      setIsSelectionMode(false);
+      setSelectedIds(new Set());
+  }
+
+  // Bulk Operations
+  const handleBulkDelete = async () => {
+      if (!user || selectedIds.size === 0) return;
+      
+      if (confirm(`Are you sure you want to delete ${selectedIds.size} counters? This cannot be undone.`)) {
+          await bulkDeleteCounters(user.uid, Array.from(selectedIds));
+          handleExitSelectionMode();
+      }
+  };
+
+
   // Render Active Counter Mode
   if (activeCounterId) {
     const counter = counters.find(c => c.id === activeCounterId);
@@ -414,13 +542,15 @@ export default function App() {
       return (
         <div className="h-screen w-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] bg-gray-950">
             <CounterView 
-            counter={counter} 
-            onBack={() => setActiveCounterId(null)}
-            onUpdate={handleUpdateCounter}
-            onRename={handleRenameCounter}
-            onUpdateTarget={handleUpdateTarget}
-            onDelete={handleDeleteCounter}
-            isMonochrome={isMonochrome}
+              counter={counter} 
+              groups={groups}
+              onBack={() => setActiveCounterId(null)}
+              onUpdate={handleUpdateCounter}
+              onRename={handleRenameCounter}
+              onUpdateTarget={handleUpdateTarget}
+              onUpdateGroup={handleUpdateCounterGroup}
+              onDelete={handleDeleteCounter}
+              isMonochrome={isMonochrome}
             />
         </div>
       );
@@ -477,7 +607,7 @@ export default function App() {
         
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-          <div className="p-6 space-y-4">
+          <div className="p-6">
              {!isFirebaseConfigured && (
                 <div className="bg-yellow-900/20 border border-yellow-700/50 p-4 rounded-xl text-yellow-500 text-sm mb-4">
                     <strong>Demo Mode:</strong> Data is saved locally. Configure Firebase in Settings for cloud sync.
@@ -485,7 +615,7 @@ export default function App() {
             )}
             
             {/* Toolbar */}
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sticky top-0 bg-gray-950 z-10 py-2">
                 <div className="flex gap-2 bg-gray-900 p-1 rounded-lg transition-colors duration-300">
                     <button 
                         onClick={() => setViewMode('grid')}
@@ -501,84 +631,160 @@ export default function App() {
                     </button>
                 </div>
 
-                <div className="flex gap-1 text-xs overflow-x-auto no-scrollbar pb-1">
-                     <button 
-                        onClick={() => setSortMode('updated')}
-                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
-                            sortMode === 'updated' 
-                                ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
-                                : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
-                        )}
-                     >
-                        <Calendar size={14} />
-                        <span className="hidden sm:inline">Recent</span>
-                     </button>
-                     <button 
-                        onClick={() => setSortMode('created')}
-                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
-                            sortMode === 'created' 
-                                ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
-                                : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
-                        )}
-                     >
-                        <Clock size={14} />
-                        <span className="hidden sm:inline">Newest</span>
-                     </button>
-                     <button 
-                        onClick={() => setSortMode('alpha')}
-                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
-                            sortMode === 'alpha' 
-                                ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
-                                : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
-                        )}
-                     >
-                        <Type size={14} />
-                        <span className="hidden sm:inline">Name</span>
-                     </button>
-                     <button 
-                        onClick={() => setSortMode('value')}
-                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
-                            sortMode === 'value' 
-                                ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
-                                : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
-                        )}
-                     >
-                        <ArrowUpDown size={14} />
-                        <span className="hidden sm:inline">Count</span>
-                     </button>
+                <div className="flex gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar items-center">
+                    {/* Select Toggle */}
+                     {counters.length > 0 && (
+                        <button 
+                            onClick={() => {
+                                setIsSelectionMode(!isSelectionMode);
+                                if (isSelectionMode) setSelectedIds(new Set());
+                            }}
+                            className={clsx(
+                                "px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0 text-xs font-medium",
+                                isSelectionMode 
+                                    ? (isMonochrome ? "bg-white text-black border-white" : "bg-indigo-600 border-indigo-500 text-white")
+                                    : "bg-transparent border-gray-800 text-gray-400 hover:text-white hover:border-gray-600"
+                            )}
+                        >
+                            {isSelectionMode ? <X size={14} /> : <CheckSquare size={14} />}
+                            {isSelectionMode ? 'Cancel' : 'Select'}
+                        </button>
+                     )}
+                     
+                     <div className="h-4 w-px bg-gray-800 mx-1 hidden sm:block"></div>
+
+                     {/* Regular Tools */}
+                     {!isSelectionMode && (
+                         <>
+                            {/* Sorting Options */}
+                            <button 
+                                onClick={() => setSortMode('updated')}
+                                className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                                    sortMode === 'updated' 
+                                        ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
+                                        : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
+                                )}
+                            >
+                                <Calendar size={14} />
+                                <span className="hidden sm:inline text-xs font-medium">Recent</span>
+                            </button>
+                            <button 
+                                onClick={() => setSortMode('value')}
+                                className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                                    sortMode === 'value' 
+                                        ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
+                                        : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
+                                )}
+                            >
+                                <ArrowUpDown size={14} />
+                                <span className="hidden sm:inline text-xs font-medium">Count</span>
+                            </button>
+                         </>
+                     )}
+                     
+                     {isSelectionMode && (
+                         <button 
+                            onClick={handleSelectAll}
+                            className="px-3 py-2 rounded-lg border bg-transparent border-gray-800 text-gray-400 hover:text-white hover:border-gray-600 text-xs font-medium"
+                         >
+                            {selectedIds.size === counters.length ? "Deselect All" : "Select All"}
+                         </button>
+                     )}
                 </div>
             </div>
 
-            <div className={clsx(
-                "grid gap-4",
-                viewMode === 'grid' ? "grid-cols-2" : "grid-cols-1"
-            )}>
-              {sortedCounters.map(counter => (
-                <CounterCard 
-                  key={counter.id} 
-                  counter={counter} 
-                  viewMode={viewMode}
-                  onClick={() => setActiveCounterId(counter.id)} 
-                  isMonochrome={isMonochrome}
-                />
-              ))}
-
-              <button 
-                onClick={() => setShowAddModal(true)}
-                className={clsx(
-                    "bg-gray-900/50 hover:bg-gray-900 transition rounded-2xl border border-dashed border-gray-800 flex flex-col items-center justify-center space-y-2 group transition-colors duration-300",
-                    viewMode === 'grid' ? "p-5 min-h-[160px]" : "p-4 min-h-[80px]"
-                )}
-              >
-                <div className={clsx(
-                    "w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center transition-colors text-gray-500",
-                    isMonochrome ? "group-hover:bg-white group-hover:text-black" : "group-hover:bg-indigo-600 group-hover:text-white"
-                )}>
-                    <Plus size={16} />
+            {/* Empty State */}
+            {counters.length === 0 && (
+                <div className="text-center py-20 flex flex-col items-center">
+                    <div className={clsx("w-20 h-20 rounded-full flex items-center justify-center mb-6", isMonochrome ? "bg-white/10 text-white" : "bg-indigo-900/20 text-indigo-400")}>
+                        <Plus size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">No counters yet</h3>
+                    <p className="text-gray-500 mb-8 max-w-xs">Start tracking habits, scores, or inventory by creating your first counter.</p>
+                    <button 
+                        onClick={() => setShowAddModal(true)}
+                        className={clsx(
+                            "px-6 py-3 rounded-xl font-bold shadow-lg transition transform hover:scale-105",
+                            isMonochrome ? "bg-white text-black" : "bg-indigo-600 text-white shadow-indigo-900/20"
+                        )}
+                    >
+                        Create Counter
+                    </button>
                 </div>
-                {viewMode === 'grid' && <span className="text-sm text-gray-500 group-hover:text-gray-300">New Counter</span>}
-              </button>
+            )}
+
+            {/* Grouped Counters */}
+            <div className="space-y-10">
+                {groupedCounters.map(section => (
+                    <div key={section.id} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Section Header (Only show if we have groups or if it's not the only 'Ungrouped' section) */}
+                        {(groups.length > 0 || section.id !== 'ungrouped') && (
+                            <div className="flex items-center gap-4 mb-4">
+                                <h3 className={clsx("text-sm font-bold uppercase tracking-wider", isMonochrome ? "text-white" : "text-gray-400")}>
+                                    {section.name}
+                                </h3>
+                                <div className="h-px bg-gray-800 flex-1"></div>
+                                <span className="text-xs text-gray-600 font-medium">{section.counters.length}</span>
+                            </div>
+                        )}
+
+                        <div className={clsx(
+                            "grid gap-4",
+                            viewMode === 'grid' ? "grid-cols-2" : "grid-cols-1"
+                        )}>
+                            {section.counters.map(counter => (
+                                <CounterCard 
+                                    key={counter.id} 
+                                    counter={counter} 
+                                    viewMode={viewMode}
+                                    onClick={() => setActiveCounterId(counter.id)} 
+                                    isMonochrome={isMonochrome}
+                                    selectionMode={isSelectionMode}
+                                    isSelected={selectedIds.has(counter.id)}
+                                    onToggleSelection={() => toggleSelection(counter.id)}
+                                />
+                            ))}
+                            
+                            {/* Add Button Logic - If simple view (no groups yet), show large add button at end of list. 
+                                If grouped, maybe show small add button per group? 
+                                Let's stick to global add button at the bottom of Ungrouped or as a FAB?
+                                Actually, let's allow adding specifically to a group? Too complex for now.
+                                Just render the big Add card only in the 'Ungrouped' section if it exists, or at the very end.
+                            */}
+                            {section.id === 'ungrouped' && groups.length === 0 && (
+                                <button 
+                                    onClick={() => setShowAddModal(true)}
+                                    className={clsx(
+                                        "bg-gray-900/50 hover:bg-gray-900 transition rounded-2xl border border-dashed border-gray-800 flex flex-col items-center justify-center space-y-2 group transition-colors duration-300",
+                                        viewMode === 'grid' ? "p-5 min-h-[160px]" : "p-4 min-h-[80px]"
+                                    )}
+                                >
+                                    <div className={clsx(
+                                        "w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center transition-colors text-gray-500",
+                                        isMonochrome ? "group-hover:bg-white group-hover:text-black" : "group-hover:bg-indigo-600 group-hover:text-white"
+                                    )}>
+                                        <Plus size={16} />
+                                    </div>
+                                    {viewMode === 'grid' && <span className="text-sm text-gray-500 group-hover:text-gray-300">New Counter</span>}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                ))}
             </div>
+
+             {/* Global Add Button for Grouped Layouts */}
+             {counters.length > 0 && groups.length > 0 && (
+                 <button 
+                    onClick={() => setShowAddModal(true)}
+                    className={clsx(
+                        "mt-8 w-full py-4 rounded-xl border border-dashed border-gray-700 text-gray-400 hover:text-white hover:bg-gray-900 hover:border-gray-500 transition flex items-center justify-center gap-2"
+                    )}
+                 >
+                     <Plus size={20} />
+                     <span>Create New Counter</span>
+                 </button>
+             )}
           </div>
         )}
 
@@ -602,6 +808,22 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Floating Bulk Action Bar */}
+      {isSelectionMode && selectedIds.size > 0 && (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-full px-6 py-3 shadow-2xl z-40 flex items-center gap-4 animate-in slide-in-from-bottom-6">
+              <span className="text-sm font-bold text-white mr-2">{selectedIds.size} Selected</span>
+              <div className="h-6 w-px bg-gray-700"></div>
+              
+              <button 
+                 onClick={handleBulkDelete}
+                 className="flex flex-col items-center gap-1 text-red-400 hover:text-red-300 transition group"
+              >
+                  <Trash2 size={20} className="group-hover:scale-110 transition-transform" />
+                  <span className="text-[10px] font-medium">Delete</span>
+              </button>
+          </div>
+      )}
 
       {/* Navigation Tab Bar - Added pb-[env(safe-area-inset-bottom)] for mobile home bar support */}
       <nav className="fixed bottom-0 w-full bg-gray-950/90 backdrop-blur-lg border-t border-gray-900 flex justify-between items-center px-6 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] z-30 transition-colors duration-300">
@@ -632,6 +854,8 @@ export default function App() {
       {showAuthModal && (
         <AuthModal onClose={() => setShowAuthModal(false)} />
       )}
+      
+      {/* Group Manager Modal */}
 
       {/* Add Counter Modal */}
       {showAddModal && (
@@ -656,7 +880,30 @@ export default function App() {
                     />
                 </div>
 
-                {/* Color Picker (Hide colors if monochrome? User might still want to tag them even if they can't see them in mono mode, keep it.) */}
+                {/* Group Selector */}
+                {groups.length > 0 && (
+                    <div className="mb-6">
+                        <label className="block text-gray-500 text-xs font-bold uppercase tracking-wider mb-2">Group</label>
+                         <div className="relative">
+                             <Folder className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                             <select
+                                value={newCounterGroupId}
+                                onChange={(e) => setNewCounterGroupId(e.target.value)}
+                                className={clsx(
+                                    "w-full bg-gray-950 border rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none appearance-none transition-colors",
+                                    isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-700 focus:border-indigo-500"
+                                )}
+                             >
+                                 <option value="">Ungrouped</option>
+                                 {groups.map(g => (
+                                     <option key={g.id} value={g.id}>{g.name}</option>
+                                 ))}
+                             </select>
+                         </div>
+                    </div>
+                )}
+
+                {/* Color Picker */}
                 <div className="mb-6">
                     <label className="block text-gray-500 text-xs font-bold uppercase tracking-wider mb-3">Color</label>
                     <div className="flex flex-wrap gap-3">

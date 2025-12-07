@@ -1,3 +1,9 @@
+export interface CounterGroup {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface Counter {
   id: string;
   title: string;
@@ -9,6 +15,7 @@ export interface Counter {
   userId?: string;
   resetDaily?: boolean;
   lastResetDate?: string; // YYYY-MM-DD string
+  groupId?: string;
 }
 
 export interface CounterLog {

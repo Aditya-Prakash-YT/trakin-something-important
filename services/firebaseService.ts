@@ -27,7 +27,7 @@ import {
   deleteField
 } from "firebase/firestore";
 import { getStorage, FirebaseStorage } from "firebase/storage";
-import { FirebaseConfig, Counter } from "../types";
+import { FirebaseConfig, Counter, CounterGroup, CounterLog } from "../types";
 
 // Workaround for firebase/app type definition issues
 const { initializeApp, getApps, getApp } = (firebaseAppModule as any);
@@ -40,6 +40,23 @@ let storage: FirebaseStorage | undefined;
 const STORAGE_KEY_CONFIG = 'tally_firebase_config';
 
 // --- CONFIGURATION SETUP ---
+// Using import.meta.env for Vite compatibility, falling back to process.env if needed
+const ENV_CONFIG: FirebaseConfig | null = (import.meta as any).env?.VITE_API_KEY ? {
+  apiKey: (import.meta as any).env.VITE_API_KEY,
+  authDomain: (import.meta as any).env.VITE_AUTH_DOMAIN || "",
+  projectId: (import.meta as any).env.VITE_PROJECT_ID || "",
+  storageBucket: (import.meta as any).env.VITE_STORAGE_BUCKET || "",
+  messagingSenderId: (import.meta as any).env.VITE_MESSAGING_SENDER_ID || "",
+  appId: (import.meta as any).env.VITE_APP_ID || ""
+} : (process.env.REACT_APP_API_KEY ? {
+  apiKey: process.env.REACT_APP_API_KEY,
+  authDomain: process.env.REACT_APP_AUTH_DOMAIN || "",
+  projectId: process.env.REACT_APP_PROJECT_ID || "",
+  storageBucket: process.env.REACT_APP_STORAGE_BUCKET || "",
+  messagingSenderId: process.env.REACT_APP_MESSAGING_SENDER_ID || "",
+  appId: process.env.REACT_APP_APP_ID || ""
+} : null);
+
 const HARDCODED_CONFIG: FirebaseConfig | null = {
   apiKey: "AIzaSyC3g2ki9O6MJgOonBn7cnZNIkqvvv0nbRo",
   authDomain: "let-s-see-118ce.firebaseapp.com",
@@ -50,18 +67,9 @@ const HARDCODED_CONFIG: FirebaseConfig | null = {
   measurementId: "G-F0X564TT7P"
 };
 
-const ENV_CONFIG: FirebaseConfig | null = process.env.REACT_APP_API_KEY ? {
-  apiKey: process.env.REACT_APP_API_KEY,
-  authDomain: process.env.REACT_APP_AUTH_DOMAIN || "",
-  projectId: process.env.REACT_APP_PROJECT_ID || "",
-  storageBucket: process.env.REACT_APP_STORAGE_BUCKET || "",
-  messagingSenderId: process.env.REACT_APP_MESSAGING_SENDER_ID || "",
-  appId: process.env.REACT_APP_APP_ID || ""
-} : null;
-
 export const getStoredConfig = (): FirebaseConfig | null => {
-  if (HARDCODED_CONFIG) return HARDCODED_CONFIG;
   if (ENV_CONFIG) return ENV_CONFIG;
+  if (HARDCODED_CONFIG) return HARDCODED_CONFIG;
   const stored = localStorage.getItem(STORAGE_KEY_CONFIG);
   if (stored) return JSON.parse(stored);
   return null;
@@ -151,7 +159,52 @@ export const subscribeToCounters = (
   });
 };
 
-export const addCounter = async (userId: string, title: string, color: string, target?: number, resetDaily: boolean = false) => {
+export const subscribeToGroups = (
+  userId: string,
+  callback: (groups: CounterGroup[]) => void
+) => {
+  if (!db) return () => {};
+  
+  const q = query(
+    collection(db, "users", userId, "groups"),
+    orderBy("createdAt", "asc")
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const groups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CounterGroup));
+    callback(groups);
+  });
+};
+
+export const addGroup = async (userId: string, name: string) => {
+  if (!db) throw new Error("No DB");
+  await addDoc(collection(db, "users", userId, "groups"), {
+    name,
+    createdAt: Date.now()
+  });
+};
+
+export const deleteGroup = async (userId: string, groupId: string) => {
+  if (!db) throw new Error("No DB");
+
+  const batch = writeBatch(db);
+  
+  // 1. Delete the group
+  batch.delete(doc(db, "users", userId, "groups", groupId));
+
+  // 2. Remove groupId from all counters in this group
+  const countersRef = collection(db, "users", userId, "counters");
+  const q = query(countersRef, where("groupId", "==", groupId));
+  const snapshot = await getDocs(q);
+  
+  snapshot.forEach(docSnap => {
+    batch.update(docSnap.ref, { groupId: deleteField() });
+  });
+
+  await batch.commit();
+};
+
+export const addCounter = async (userId: string, title: string, color: string, target?: number, resetDaily: boolean = false, groupId?: string) => {
   if (!db) throw new Error("No DB");
   
   const data: any = {
@@ -167,6 +220,10 @@ export const addCounter = async (userId: string, title: string, color: string, t
   if (target !== undefined && target !== null) {
     data.target = target;
   }
+
+  if (groupId) {
+    data.groupId = groupId;
+  }
   
   await addDoc(collection(db, "users", userId, "counters"), data);
 };
@@ -175,6 +232,16 @@ export const updateCounterTitle = async (userId: string, counterId: string, newT
   if (!db) throw new Error("No DB");
   const counterRef = doc(db, "users", userId, "counters", counterId);
   await updateDoc(counterRef, { title: newTitle });
+};
+
+export const updateCounterGroup = async (userId: string, counterId: string, groupId: string | null) => {
+  if (!db) throw new Error("No DB");
+  const counterRef = doc(db, "users", userId, "counters", counterId);
+  if (groupId === null) {
+    await updateDoc(counterRef, { groupId: deleteField() });
+  } else {
+    await updateDoc(counterRef, { groupId });
+  }
 };
 
 export const updateCounterTarget = async (userId: string, counterId: string, newTarget: number | null) => {
@@ -216,7 +283,7 @@ export const updateCounterValue = async (userId: string, counterId: string, delt
   await batch.commit();
 };
 
-export const getHistoryLogs = async (userId: string, daysBack: number = 365) => {
+export const getHistoryLogs = async (userId: string, daysBack: number = 365): Promise<CounterLog[]> => {
   if (!db) return [];
   
   const startDate = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
@@ -228,7 +295,7 @@ export const getHistoryLogs = async (userId: string, daysBack: number = 365) => 
   );
   
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CounterLog));
 };
 
 // Check for daily resets

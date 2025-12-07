@@ -1,17 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Minus, Plus, Settings2, Trash2, Edit3, X, Target, Save, AlertTriangle, Folder } from 'lucide-react';
+import { ArrowLeft, Minus, Plus, Settings2, Trash2, X, Save, AlertTriangle, Folder } from 'lucide-react';
 import { Counter, CounterGroup } from '../types';
 import { playClick, playSuccess } from '../services/sound';
 import clsx from 'clsx';
 
 interface CounterViewProps {
   counter: Counter;
-  groups?: CounterGroup[]; // Added groups prop
+  groups?: CounterGroup[]; 
   onBack: () => void;
   onUpdate: (id: string, delta: number) => void;
   onRename: (id: string, newTitle: string) => void;
   onUpdateTarget: (id: string, target: number | null) => void;
-  onUpdateGroup?: (id: string, groupId: string | null) => void; // Added onUpdateGroup prop
+  onUpdateGroup?: (id: string, groupId: string | null) => void;
   onDelete: (id: string) => void;
   isMonochrome?: boolean;
 }
