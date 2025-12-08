@@ -32,6 +32,7 @@ export interface TodoNode {
   completed: boolean;
   isExpanded: boolean;
   children: TodoNode[];
+  priority?: 'high' | 'medium' | 'low';
 }
 
 export interface TodoList {

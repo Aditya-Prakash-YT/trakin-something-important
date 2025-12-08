@@ -24,7 +24,8 @@ import {
   X,
   Trash2,
   CheckCircle2,
-  CheckSquare2
+  CheckSquare2,
+  FolderPlus
 } from 'lucide-react';
 import { Counter, CounterLog, Tab, AppTheme, CounterGroup, TodoList } from './types';
 import { 
@@ -257,8 +258,12 @@ export default function App() {
   const [activeCounterId, setActiveCounterId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(false);
+  
+  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  
   const [isSyncing, setIsSyncing] = useState(false);
   
   // Selection Mode State
@@ -278,6 +283,9 @@ export default function App() {
   const [hasTarget, setHasTarget] = useState(false);
   const [targetValue, setTargetValue] = useState("");
   const [resetDaily, setResetDaily] = useState(true);
+
+  // Group Manager State
+  const [newGroupName, setNewGroupName] = useState("");
 
   // Sorting & View
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -323,7 +331,12 @@ export default function App() {
             const c: Counter[] = JSON.parse(localData);
             setCounters(c);
         }
-        // Local todos could be loaded here too, but prioritized cloud for now or simple local storage
+        // Load local groups
+        const localGroups = localStorage.getItem('local_groups');
+        if (localGroups) {
+            setGroups(JSON.parse(localGroups));
+        }
+        // Local todos
         const localTodos = localStorage.getItem('local_todos');
         if (localTodos) {
             setTodoLists(JSON.parse(localTodos));
@@ -355,20 +368,39 @@ export default function App() {
     } else if (!isFirebaseConfigured) {
         // Sync to local storage
         localStorage.setItem('local_counters', JSON.stringify(counters));
+        localStorage.setItem('local_groups', JSON.stringify(groups));
         localStorage.setItem('local_todos', JSON.stringify(todoLists));
     }
-  }, [user, counters.length, todoLists, isFirebaseConfigured]); 
+  }, [user, counters.length, groups.length, todoLists, isFirebaseConfigured]); 
 
   // Group Management Handlers
-  const handleAddGroup = async (name: string) => {
+  const handleAddGroup = async () => {
+    if (!newGroupName.trim()) return;
+    
     if (user) {
-      await addGroup(user.uid, name);
+      await addGroup(user.uid, newGroupName);
+    } else {
+        const newGroup: CounterGroup = {
+            id: Date.now().toString(),
+            name: newGroupName,
+            createdAt: Date.now()
+        };
+        setGroups(prev => [...prev, newGroup]);
     }
+    setNewGroupName("");
   };
 
   const handleDeleteGroup = async (groupId: string) => {
-    if (user) {
-      await deleteGroup(user.uid, groupId);
+    if (confirm("Delete this group? Counters in this group will be moved to Ungrouped.")) {
+        if (user) {
+            await deleteGroup(user.uid, groupId);
+        } else {
+            // Remove group
+            setGroups(prev => prev.filter(g => g.id !== groupId));
+            
+            // Ungroup counters
+            setCounters(prev => prev.map(c => c.groupId === groupId ? { ...c, groupId: undefined } : c));
+        }
     }
   };
 
@@ -613,30 +645,37 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans transition-colors duration-300">
       
-      {/* Top Bar - Only show on main dashboard or stats when not in selection mode */}
-      {activeTab !== 'settings' && activeTab !== 'todos' && !isSelectionMode && (
-          <header className="px-6 py-5 pt-[calc(1.25rem+env(safe-area-inset-top))] flex justify-between items-center bg-gray-950 border-b border-gray-900 sticky top-0 z-10 transition-colors duration-300">
-            <h1 className={clsx("text-xl font-bold", isMonochrome ? "text-white" : "bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-violet-400")}>
-              TallyMaster
-            </h1>
-            
-            <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center">
+      {/* Top Header Bar - Fixed */}
+      <header className="fixed top-0 left-0 right-0 z-30 bg-gray-950/80 backdrop-blur-xl border-b border-gray-900 transition-colors duration-300">
+          <div className="pt-[env(safe-area-inset-top)] px-4 h-14 flex items-center justify-between">
+              {/* Brand */}
+              <div className="flex items-center gap-3">
+                  <div className={clsx(
+                      "w-8 h-8 rounded-xl flex items-center justify-center font-black text-lg shadow-lg rotate-3", 
+                      isMonochrome ? "bg-white text-black" : "bg-gradient-to-br from-indigo-500 to-purple-600 text-white"
+                  )}>
+                      T
+                  </div>
+                  <h1 className={clsx("text-lg font-bold tracking-tight", isMonochrome ? "text-white" : "text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400")}>
+                    TallyMaster
+                  </h1>
+              </div>
+
+              {/* Status / Auth */}
+              <div className="flex items-center gap-3">
+                {/* Sync Status */}
+                <div className="flex items-center justify-center w-8 h-8">
                     {user ? (
                         isSyncing ? (
-                            <div title="Syncing..." className={clsx("transition-colors duration-300", isMonochrome ? "text-white" : "text-yellow-500")}>
-                                <RefreshCw size={18} className="animate-spin" />
-                            </div>
+                            <RefreshCw size={16} className={clsx("animate-spin", isMonochrome ? "text-white" : "text-yellow-500")} />
                         ) : (
-                            <div title="Synced" className={clsx("transition-colors duration-300 relative", isMonochrome ? "text-white" : "text-green-500")}>
-                                <Cloud size={18} fill="currentColor" className="opacity-20" />
-                                <Check size={10} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-bold" strokeWidth={4} />
+                            <div className="relative">
+                                <Cloud size={18} className={clsx("opacity-40", isMonochrome ? "text-white" : "text-green-500")} />
+                                <Check size={10} className={clsx("absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-bold", isMonochrome ? "text-white" : "text-green-500")} />
                             </div>
                         )
                     ) : (
-                        <div title="Local Storage (Offline)" className={clsx("transition-colors duration-300", isMonochrome ? "text-gray-500" : "text-red-500/80")}>
-                            <CloudOff size={18} />
-                        </div>
+                        <CloudOff size={18} className="text-gray-600" />
                     )}
                 </div>
 
@@ -644,41 +683,45 @@ export default function App() {
                     <button 
                         onClick={() => setShowAuthModal(true)}
                         className={clsx(
-                            "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full transition",
-                            isMonochrome ? "bg-white text-black hover:bg-gray-200" : "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30"
+                            "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full transition font-semibold border",
+                            isMonochrome ? "bg-white text-black border-transparent" : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20"
                         )}
                     >
-                        <LogIn size={14} /> Sign In
+                        <LogIn size={14} /> 
+                        <span>Sign In</span>
                     </button>
                 )}
-            </div>
-          </header>
-      )}
+              </div>
+          </div>
+      </header>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pb-24 no-scrollbar">
+      {/* Main Content Area */}
+      {/* Padding Top accounts for header height (~3.5rem + safe area) */}
+      {/* Padding Bottom accounts for bottom nav height (~4rem + safe area) */}
+      <main className="flex-1 overflow-y-auto pt-[calc(3.5rem+env(safe-area-inset-top))] pb-[calc(5rem+env(safe-area-inset-bottom))] no-scrollbar scroll-smooth">
         
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-          <div className="p-6">
+          <div className="px-4 md:px-6 mt-4">
              {!isFirebaseConfigured && (
-                <div className="bg-yellow-900/20 border border-yellow-700/50 p-4 rounded-xl text-yellow-500 text-sm mb-4">
-                    <strong>Demo Mode:</strong> Data is saved locally. Configure Firebase in Settings for cloud sync.
+                <div className="bg-yellow-900/10 border border-yellow-700/30 p-3 rounded-xl text-yellow-500 text-xs mb-6 flex items-start gap-2">
+                    <CloudOff size={16} className="shrink-0 mt-0.5" />
+                    <span><strong>Demo Mode:</strong> Data is saved locally. Sign in via Settings to sync across devices.</span>
                 </div>
             )}
             
             {/* Toolbar */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sticky top-0 bg-gray-950 z-10 py-2">
-                <div className="flex gap-2 bg-gray-900 p-1 rounded-lg transition-colors duration-300">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div className="flex gap-1 bg-gray-900/50 p-1 rounded-xl border border-gray-800/50">
                     <button 
                         onClick={() => setViewMode('grid')}
-                        className={clsx("p-2 rounded-md transition-colors", viewMode === 'grid' ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300")}
+                        className={clsx("p-2 rounded-lg transition-all", viewMode === 'grid' ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-300")}
                     >
                         <LayoutGrid size={16} />
                     </button>
                     <button 
                          onClick={() => setViewMode('list')}
-                         className={clsx("p-2 rounded-md transition-colors", viewMode === 'list' ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300")}
+                         className={clsx("p-2 rounded-lg transition-all", viewMode === 'list' ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-300")}
                     >
                         <List size={16} />
                     </button>
@@ -696,7 +739,7 @@ export default function App() {
                                 "px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0 text-xs font-medium",
                                 isSelectionMode 
                                     ? (isMonochrome ? "bg-white text-black border-white" : "bg-indigo-600 border-indigo-500 text-white")
-                                    : "bg-transparent border-gray-800 text-gray-400 hover:text-white hover:border-gray-600"
+                                    : "bg-gray-900/50 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-900"
                             )}
                         >
                             {isSelectionMode ? <X size={14} /> : <CheckSquare size={14} />}
@@ -709,13 +752,24 @@ export default function App() {
                      {/* Regular Tools */}
                      {!isSelectionMode && (
                          <>
+                            {/* Groups Manager */}
+                            <button 
+                                onClick={() => setShowGroupModal(true)}
+                                className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                                    isMonochrome ? "bg-transparent border-gray-800 text-gray-500 hover:bg-gray-900" : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900 hover:text-white"
+                                )}
+                            >
+                                <Folder size={14} />
+                                <span className="hidden sm:inline text-xs font-medium">Groups</span>
+                            </button>
+
                             {/* Sorting Options */}
                             <button 
                                 onClick={() => setSortMode('updated')}
                                 className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
                                     sortMode === 'updated' 
                                         ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
-                                        : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
+                                        : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
                                 )}
                             >
                                 <Calendar size={14} />
@@ -726,7 +780,7 @@ export default function App() {
                                 className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
                                     sortMode === 'value' 
                                         ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
-                                        : "bg-transparent border-transparent text-gray-500 hover:bg-gray-900"
+                                        : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
                                 )}
                             >
                                 <ArrowUpDown size={14} />
@@ -738,7 +792,7 @@ export default function App() {
                      {isSelectionMode && (
                          <button 
                             onClick={handleSelectAll}
-                            className="px-3 py-2 rounded-lg border bg-transparent border-gray-800 text-gray-400 hover:text-white hover:border-gray-600 text-xs font-medium"
+                            className="px-3 py-2 rounded-lg border bg-gray-900/50 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-900 text-xs font-medium"
                          >
                             {selectedIds.size === counters.length ? "Deselect All" : "Select All"}
                          </button>
@@ -748,7 +802,7 @@ export default function App() {
 
             {/* Empty State */}
             {counters.length === 0 && (
-                <div className="text-center py-20 flex flex-col items-center">
+                <div className="text-center py-20 flex flex-col items-center animate-in zoom-in-95 duration-500">
                     <div className={clsx("w-20 h-20 rounded-full flex items-center justify-center mb-6", isMonochrome ? "bg-white/10 text-white" : "bg-indigo-900/20 text-indigo-400")}>
                         <Plus size={32} />
                     </div>
@@ -770,7 +824,7 @@ export default function App() {
             <div className="space-y-10">
                 {groupedCounters.map(section => (
                     <div key={section.id} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {/* Section Header (Only show if we have groups or if it's not the only 'Ungrouped' section) */}
+                        {/* Section Header */}
                         {(groups.length > 0 || section.id !== 'ungrouped') && (
                             <div className="flex items-center gap-4 mb-4">
                                 <h3 className={clsx("text-sm font-bold uppercase tracking-wider", isMonochrome ? "text-white" : "text-gray-400")}>
@@ -802,7 +856,7 @@ export default function App() {
                                 <button 
                                     onClick={() => setShowAddModal(true)}
                                     className={clsx(
-                                        "bg-gray-900/50 hover:bg-gray-900 transition rounded-2xl border border-dashed border-gray-800 flex flex-col items-center justify-center space-y-2 group transition-colors duration-300",
+                                        "bg-gray-900/30 hover:bg-gray-900/60 transition rounded-2xl border border-dashed border-gray-800 flex flex-col items-center justify-center space-y-2 group transition-colors duration-300",
                                         viewMode === 'grid' ? "p-5 min-h-[160px]" : "p-4 min-h-[80px]"
                                     )}
                                 >
@@ -848,7 +902,7 @@ export default function App() {
 
         {/* Analytics Tab */}
         {activeTab === 'analytics' && (
-          <div className="p-6 space-y-6 pt-24">
+          <div className="px-4 md:px-6 space-y-6 mt-4">
              <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 transition-colors duration-300">
                 <CalendarStats logs={logs} counters={counters} isMonochrome={isMonochrome} />
              </div>
@@ -869,7 +923,7 @@ export default function App() {
 
       {/* Floating Bulk Action Bar */}
       {isSelectionMode && selectedIds.size > 0 && (
-          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-full px-6 py-3 shadow-2xl z-40 flex items-center gap-4 animate-in slide-in-from-bottom-6">
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-full px-6 py-3 shadow-2xl z-50 flex items-center gap-4 animate-in slide-in-from-bottom-6">
               <span className="text-sm font-bold text-white mr-2">{selectedIds.size} Selected</span>
               <div className="h-6 w-px bg-gray-700"></div>
               
@@ -883,44 +937,67 @@ export default function App() {
           </div>
       )}
 
-      {/* Navigation Tab Bar - Added pb-[env(safe-area-inset-bottom)] for mobile home bar support */}
-      <nav className="fixed bottom-0 w-full bg-gray-950/90 backdrop-blur-lg border-t border-gray-900 flex justify-between items-center px-6 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] z-30 transition-colors duration-300">
-        <button 
-            onClick={() => setActiveTab('dashboard')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'dashboard' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-600")}
-        >
-            <LayoutDashboard size={24} />
-            <span className="text-[10px] font-medium">Counters</span>
-        </button>
-        <button 
-            onClick={() => setActiveTab('todos')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'todos' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-600")}
-        >
-            <CheckSquare2 size={24} />
-            <span className="text-[10px] font-medium">Todos</span>
-        </button>
-        <button 
-            onClick={() => setActiveTab('analytics')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'analytics' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-600")}
-        >
-            <HistoryIcon size={24} />
-            <span className="text-[10px] font-medium">History</span>
-        </button>
-        <button 
-            onClick={() => setActiveTab('settings')}
-            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'settings' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-600")}
-        >
-            <SettingsIcon size={24} />
-            <span className="text-[10px] font-medium">Settings</span>
-        </button>
-      </nav>
-
       {/* Auth Modal */}
       {showAuthModal && (
         <AuthModal onClose={() => setShowAuthModal(false)} />
       )}
       
       {/* Group Manager Modal */}
+      {showGroupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in p-4">
+            <div className="bg-gray-900 w-full max-w-sm p-6 rounded-2xl border border-gray-800 shadow-2xl relative">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <Folder className={isMonochrome ? "text-white" : "text-indigo-400"} size={24} />
+                        Manage Groups
+                    </h3>
+                    <button onClick={() => setShowGroupModal(false)} className="text-gray-500 hover:text-white"><X size={20} /></button>
+                </div>
+
+                <div className="space-y-3 mb-6 max-h-[40vh] overflow-y-auto pr-2">
+                    {groups.length === 0 ? (
+                        <p className="text-gray-500 text-sm text-center py-4">No groups created yet.</p>
+                    ) : (
+                        groups.map(group => (
+                            <div key={group.id} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-xl border border-gray-800">
+                                <span className="font-medium text-gray-200">{group.name}</span>
+                                <button 
+                                    onClick={() => handleDeleteGroup(group.id)}
+                                    className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                <div className="flex gap-2 border-t border-gray-800 pt-6">
+                     <div className="relative flex-1">
+                        <FolderPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                        <input 
+                            type="text"
+                            placeholder="New Group Name"
+                            className="w-full bg-gray-950 border border-gray-700 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-indigo-500 text-sm"
+                            value={newGroupName}
+                            onChange={(e) => setNewGroupName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddGroup()}
+                        />
+                     </div>
+                     <button 
+                        onClick={handleAddGroup}
+                        disabled={!newGroupName.trim()}
+                        className={clsx(
+                            "px-4 rounded-xl font-bold transition disabled:opacity-50 disabled:cursor-not-allowed",
+                            isMonochrome ? "bg-white text-black" : "bg-indigo-600 text-white hover:bg-indigo-500"
+                        )}
+                     >
+                        <Plus size={20} />
+                     </button>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* Add Counter Modal */}
       {showAddModal && (
@@ -1070,6 +1147,28 @@ export default function App() {
             </div>
         </div>
       )}
+
+      {/* Bottom Tab Navigator */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-gray-950/90 backdrop-blur-lg border-t border-gray-900 transition-colors duration-300 pb-[env(safe-area-inset-bottom)]">
+          <div className="flex justify-around items-center h-16">
+             <button onClick={() => setActiveTab('dashboard')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'dashboard' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-500 hover:text-gray-300")}>
+                <LayoutDashboard size={24} strokeWidth={activeTab === 'dashboard' ? 2.5 : 2} />
+                <span className="text-[10px] font-medium">Counters</span>
+             </button>
+             <button onClick={() => setActiveTab('todos')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'todos' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-500 hover:text-gray-300")}>
+                <CheckSquare2 size={24} strokeWidth={activeTab === 'todos' ? 2.5 : 2} />
+                <span className="text-[10px] font-medium">Tasks</span>
+             </button>
+             <button onClick={() => setActiveTab('analytics')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'analytics' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-500 hover:text-gray-300")}>
+                <HistoryIcon size={24} strokeWidth={activeTab === 'analytics' ? 2.5 : 2} />
+                <span className="text-[10px] font-medium">Stats</span>
+             </button>
+             <button onClick={() => setActiveTab('settings')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'settings' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-500 hover:text-gray-300")}>
+                <SettingsIcon size={24} strokeWidth={activeTab === 'settings' ? 2.5 : 2} />
+                <span className="text-[10px] font-medium">Settings</span>
+             </button>
+          </div>
+      </nav>
 
     </div>
   );
