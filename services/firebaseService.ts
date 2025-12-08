@@ -259,6 +259,18 @@ export const deleteCounter = async (userId: string, counterId: string) => {
     await deleteDoc(doc(db, "users", userId, "counters", counterId));
 }
 
+// Bulk Operations
+
+export const bulkDeleteCounters = async (userId: string, counterIds: string[]) => {
+  if (!db) throw new Error("No DB");
+  const batch = writeBatch(db);
+  counterIds.forEach(id => {
+      const ref = doc(db, "users", userId, "counters", id);
+      batch.delete(ref);
+  });
+  await batch.commit();
+}
+
 export const updateCounterValue = async (userId: string, counterId: string, delta: number, newValue: number) => {
   if (!db) throw new Error("No DB");
 

@@ -1,17 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Minus, Plus, Settings2, Trash2, Edit3, X, Target, Save, AlertTriangle, Folder } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { ArrowLeft, Minus, Plus, Settings2, Trash2, X, Save, AlertTriangle, Folder, Check, Edit2, RotateCcw, Target } from 'lucide-react';
 import { Counter, CounterGroup } from '../types';
 import { playClick, playSuccess } from '../services/sound';
 import clsx from 'clsx';
 
 interface CounterViewProps {
   counter: Counter;
-  groups?: CounterGroup[]; // Added groups prop
+  groups?: CounterGroup[]; 
   onBack: () => void;
   onUpdate: (id: string, delta: number) => void;
   onRename: (id: string, newTitle: string) => void;
   onUpdateTarget: (id: string, target: number | null) => void;
-  onUpdateGroup?: (id: string, groupId: string | null) => void; // Added onUpdateGroup prop
+  onUpdateGroup?: (id: string, groupId: string | null) => void;
   onDelete: (id: string) => void;
   isMonochrome?: boolean;
 }
@@ -37,6 +37,11 @@ export const CounterView: React.FC<CounterViewProps> = ({
   const [isTargetEnabled, setIsTargetEnabled] = useState(!!counter.target);
   const [editGroupId, setEditGroupId] = useState<string>(counter.groupId || "");
 
+  // Quick Target Edit State
+  const [isEditingTarget, setIsEditingTarget] = useState(false);
+  const [quickTarget, setQuickTarget] = useState<string>("");
+  const quickTargetInputRef = useRef<HTMLInputElement>(null);
+
   // Delete State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteInput, setDeleteInput] = useState("");
@@ -58,6 +63,12 @@ export const CounterView: React.FC<CounterViewProps> = ({
         setEditGroupId(counter.groupId || "");
     }
   }, [counter, showMenu]);
+
+  useEffect(() => {
+      if (isEditingTarget && quickTargetInputRef.current) {
+          quickTargetInputRef.current.focus();
+      }
+  }, [isEditingTarget]);
 
   const isTargetReached = counter.target !== undefined && localCount >= counter.target;
 
@@ -112,10 +123,27 @@ export const CounterView: React.FC<CounterViewProps> = ({
         hasChanges = true;
     }
 
-    if (hasChanges) {
-        // Ideally give feedback, but closing menu is fine
-    }
     setShowMenu(false);
+  };
+
+  const startQuickEditTarget = () => {
+      setQuickTarget(counter.target?.toString() || "");
+      setIsEditingTarget(true);
+  };
+
+  const saveQuickTarget = () => {
+      const val = parseInt(quickTarget);
+      if (!isNaN(val) && val > 0) {
+          onUpdateTarget(counter.id, val);
+      }
+      setIsEditingTarget(false);
+  };
+
+  const adjustQuickTarget = (delta: number) => {
+      setQuickTarget(prev => {
+          const curr = parseInt(prev) || 0;
+          return Math.max(1, curr + delta).toString();
+      });
   };
 
   const calculateProgress = () => {
@@ -136,26 +164,26 @@ export const CounterView: React.FC<CounterViewProps> = ({
       />
 
       {/* Header */}
-      <div className="absolute top-0 w-full p-4 flex justify-between items-center z-20 bg-gradient-to-b from-gray-950/80 to-transparent">
+      <div className="absolute top-0 w-full p-4 flex justify-between items-center z-20 bg-gradient-to-b from-gray-950/80 to-transparent pt-[calc(1rem+env(safe-area-inset-top))]">
         <button 
           onClick={onBack}
-          className="p-2 bg-gray-800/50 backdrop-blur-md rounded-full text-white hover:bg-gray-700/50 transition"
+          className="p-3 bg-gray-800/50 backdrop-blur-md rounded-full text-white hover:bg-gray-700/50 transition"
         >
-          <ArrowLeft size={24} />
+          <ArrowLeft size={20} />
         </button>
         <div className={clsx(
-            "backdrop-blur-md px-3 py-1 rounded-full text-xs font-medium transition-colors",
+            "backdrop-blur-md px-4 py-1.5 rounded-full text-xs font-bold transition-colors shadow-lg",
             isTargetReached 
               ? (isMonochrome ? "bg-white/20 text-white border border-white/30" : "bg-green-500/20 text-green-400 border border-green-500/30") 
-              : "bg-gray-800/50 text-gray-300"
+              : "bg-gray-800/50 text-gray-300 border border-gray-700/50"
         )}>
              {counter.target ? `${localCount} / ${counter.target}` : 'No Limit'}
         </div>
         <button 
           onClick={() => setShowMenu(true)}
-          className="p-2 bg-gray-800/50 backdrop-blur-md rounded-full text-white hover:bg-gray-700/50 transition"
+          className="p-3 bg-gray-800/50 backdrop-blur-md rounded-full text-white hover:bg-gray-700/50 transition"
         >
-          <Settings2 size={24} />
+          <Settings2 size={20} />
         </button>
       </div>
 
@@ -317,68 +345,99 @@ export const CounterView: React.FC<CounterViewProps> = ({
       )}
 
       {/* Display Area */}
-      <div className="flex-1 flex flex-col items-center justify-center relative z-10">
-        <h2 className="text-gray-400 text-lg font-medium tracking-wide uppercase mb-2">{counter.title}</h2>
+      <div className="flex-1 flex flex-col items-center justify-center relative z-10 w-full max-w-lg mx-auto">
+        <h2 className="text-gray-400 text-lg font-medium tracking-wide uppercase mb-4 opacity-80">{counter.title}</h2>
         <div 
           className={clsx(
-            "text-9xl font-black tabular-nums transition-all duration-300",
+            "text-9xl font-black tabular-nums transition-all duration-300 select-none",
             isAnimating === 'up' && "scale-110",
             isAnimating === 'down' && "scale-90",
             isTargetReached && "animate-pulse",
-            isTargetReached && !isMonochrome && "drop-shadow-[0_0_25px_rgba(74,222,128,0.6)]",
-            isTargetReached && isMonochrome && "drop-shadow-[0_0_25px_rgba(255,255,255,0.6)]"
+            isTargetReached && !isMonochrome && "drop-shadow-[0_0_40px_rgba(74,222,128,0.5)]",
+            isTargetReached && isMonochrome && "drop-shadow-[0_0_40px_rgba(255,255,255,0.5)]"
           )}
           style={{ color: isTargetReached ? targetReachedColor : displayColor }}
         >
           {localCount}
         </div>
         
-        {/* Target Progress Bar */}
+        {/* Target Progress Section */}
         {counter.target && (
-            <div className="mt-8 w-64">
-                <div className="flex justify-between text-xs text-gray-500 mb-2 font-medium">
-                    <span className={isTargetReached ? (isMonochrome ? "text-white" : "text-green-400") : ""}>Progress</span>
+            <div className="mt-12 w-full max-w-xs px-6 flex flex-col items-center animate-in fade-in slide-in-from-bottom-4">
+                <div className="flex justify-between w-full text-xs text-gray-500 mb-2 font-medium">
+                    <span className={isTargetReached ? (isMonochrome ? "text-white" : "text-green-400") : ""}>
+                        {isTargetReached ? 'Goal Reached!' : 'Progress'}
+                    </span>
                     <span className={isTargetReached ? (isMonochrome ? "text-white" : "text-green-400") : ""}>{Math.round(calculateProgress())}%</span>
                 </div>
                 <div className={clsx(
-                    "h-2 w-full bg-gray-900 rounded-full overflow-hidden border transition-colors duration-300",
+                    "h-3 w-full bg-gray-900/80 rounded-full overflow-hidden border transition-colors duration-300",
                     isTargetReached 
                         ? (isMonochrome ? "border-white/50 shadow-[0_0_15px_rgba(255,255,255,0.3)]" : "border-green-500/50 shadow-[0_0_15px_rgba(74,222,128,0.3)]") 
                         : "border-gray-800/50"
                 )}>
                     <div 
-                        className="h-full transition-all duration-500 ease-out"
+                        className="h-full transition-all duration-500 ease-out relative"
                         style={{ 
                             width: `${calculateProgress()}%`, 
                             backgroundColor: isTargetReached ? targetReachedColor : displayColor 
                         }}
-                    />
-                </div>
-                {isTargetReached && (
-                    <div className={clsx(
-                        "text-center mt-3 text-sm font-bold tracking-[0.2em] animate-bounce-short",
-                        isMonochrome ? "text-white" : "text-green-400"
-                    )}>
-                        GOAL REACHED
+                    >
+                        {/* Shimmer effect */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] animate-[shimmer_2s_infinite]"></div>
                     </div>
-                )}
+                </div>
+
+                {/* Inline Target Controls */}
+                <div className="mt-6 flex items-center justify-center">
+                    {isEditingTarget ? (
+                       <div className="flex items-center gap-2 bg-gray-900/90 rounded-xl p-1.5 border border-gray-700 backdrop-blur-md shadow-2xl animate-in zoom-in-95 duration-200">
+                           <button onClick={() => adjustQuickTarget(-1)} className="p-2 hover:bg-white/10 rounded-lg text-white active:scale-95 transition-transform"><Minus size={16}/></button>
+                           <input 
+                                ref={quickTargetInputRef}
+                                type="number" 
+                                className="bg-transparent text-white font-mono font-bold text-center w-16 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                value={quickTarget}
+                                onChange={(e) => setQuickTarget(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && saveQuickTarget()}
+                           />
+                           <button onClick={() => adjustQuickTarget(1)} className="p-2 hover:bg-white/10 rounded-lg text-white active:scale-95 transition-transform"><Plus size={16}/></button>
+                           <div className="w-px h-5 bg-gray-700 mx-1"></div>
+                           <button onClick={saveQuickTarget} className="p-2 bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded-lg active:scale-95 transition-transform"><Check size={16}/></button>
+                       </div>
+                    ) : (
+                       <button 
+                          onClick={startQuickEditTarget}
+                          className="group flex items-center gap-2 py-2 px-4 rounded-full bg-gray-900/30 hover:bg-gray-800 border border-transparent hover:border-gray-700 transition-all active:scale-95"
+                       >
+                          <Target size={12} className={clsx("transition-colors", isMonochrome ? "text-white" : "text-indigo-400")} />
+                          <span className="text-xs text-gray-500 group-hover:text-gray-200 font-medium">Goal: {counter.target}</span>
+                          <Edit2 size={10} className="text-gray-600 group-hover:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                       </button>
+                    )}
+                </div>
             </div>
         )}
       </div>
 
-      {/* Controls */}
-      <div className="h-2/5 flex">
+      {/* Improved Controls */}
+      <div className="h-48 w-full max-w-md mx-auto grid grid-cols-2 gap-6 px-6 pb-[calc(2rem+env(safe-area-inset-bottom))]">
         <button 
           onClick={() => handleUpdate(-1)}
-          className="flex-1 bg-gray-900 hover:bg-gray-800 active:bg-gray-700 transition-colors flex items-center justify-center border-t border-r border-gray-800 group"
+          className="bg-gray-900/40 hover:bg-gray-900/60 active:bg-gray-800 border border-gray-800/50 hover:border-gray-700 rounded-3xl flex items-center justify-center transition-all duration-200 group backdrop-blur-sm active:scale-95 shadow-lg"
         >
-          <Minus size={48} className="text-gray-500 group-hover:text-white transition-colors" />
+          <Minus size={32} className="text-gray-500 group-hover:text-white transition-colors" />
         </button>
         <button 
           onClick={() => handleUpdate(1)}
-          className="flex-1 bg-gray-900 hover:bg-gray-800 active:bg-gray-700 transition-colors flex items-center justify-center border-t border-gray-800 group"
+          className={clsx(
+              "rounded-3xl flex items-center justify-center transition-all duration-200 group active:scale-95 shadow-xl border border-transparent",
+              isMonochrome 
+                ? "bg-white text-black hover:bg-gray-200 shadow-white/10" 
+                : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/30 hover:shadow-indigo-500/50"
+          )}
         >
-          <Plus size={48} className="text-gray-500 group-hover:text-white transition-colors" />
+          <Plus size={40} className="drop-shadow-sm" />
         </button>
       </div>
     </div>

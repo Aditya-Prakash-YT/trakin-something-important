@@ -41,7 +41,8 @@ import {
   subscribeToGroups,
   addGroup,
   deleteGroup,
-  updateCounterGroup
+  updateCounterGroup,
+  bulkDeleteCounters
 } from './services/firebaseService';
 import { CounterView } from './components/CounterView';
 import { Settings } from './components/Settings';
