@@ -23,9 +23,10 @@ import {
   Square,
   X,
   Trash2,
-  CheckCircle2
+  CheckCircle2,
+  CheckSquare2
 } from 'lucide-react';
-import { Counter, CounterLog, Tab, AppTheme, CounterGroup } from './types';
+import { Counter, CounterLog, Tab, AppTheme, CounterGroup, TodoList } from './types';
 import { 
   initFirebase, 
   subscribeToAuth, 
@@ -42,12 +43,17 @@ import {
   addGroup,
   deleteGroup,
   updateCounterGroup,
-  bulkDeleteCounters
+  bulkDeleteCounters,
+  subscribeToTodoLists,
+  addTodoList,
+  updateTodoList,
+  deleteTodoList
 } from './services/firebaseService';
 import { CounterView } from './components/CounterView';
 import { Settings } from './components/Settings';
 import { CalendarStats } from './components/CalendarStats';
 import { AuthModal } from './components/AuthModal';
+import { TodoManager } from './components/TodoManager';
 import clsx from 'clsx';
 
 const COLORS = [
@@ -246,13 +252,13 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [counters, setCounters] = useState<Counter[]>([]);
   const [groups, setGroups] = useState<CounterGroup[]>([]);
+  const [todoLists, setTodoLists] = useState<TodoList[]>([]); // NEW STATE
   const [logs, setLogs] = useState<CounterLog[]>([]);
   const [activeCounterId, setActiveCounterId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showGroupModal, setShowGroupModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   
   // Selection Mode State
@@ -317,10 +323,15 @@ export default function App() {
             const c: Counter[] = JSON.parse(localData);
             setCounters(c);
         }
+        // Local todos could be loaded here too, but prioritized cloud for now or simple local storage
+        const localTodos = localStorage.getItem('local_todos');
+        if (localTodos) {
+            setTodoLists(JSON.parse(localTodos));
+        }
     }
   }, []);
 
-  // Sync counters and groups
+  // Sync counters and groups and todos
   useEffect(() => {
     if (user) {
       const unsubCounters = subscribeToCounters(user.uid, (data, syncing) => {
@@ -330,18 +341,23 @@ export default function App() {
       const unsubGroups = subscribeToGroups(user.uid, (data) => {
         setGroups(data);
       });
+      const unsubTodos = subscribeToTodoLists(user.uid, (data) => {
+          setTodoLists(data);
+      });
       
       getHistoryLogs(user.uid).then(setLogs);
       
       return () => {
         unsubCounters();
         unsubGroups();
+        unsubTodos();
       };
     } else if (!isFirebaseConfigured) {
         // Sync to local storage
         localStorage.setItem('local_counters', JSON.stringify(counters));
+        localStorage.setItem('local_todos', JSON.stringify(todoLists));
     }
-  }, [user, counters.length, isFirebaseConfigured]); // Depend on counters.length for local storage sync only
+  }, [user, counters.length, todoLists, isFirebaseConfigured]); 
 
   // Group Management Handlers
   const handleAddGroup = async (name: string) => {
@@ -504,6 +520,41 @@ export default function App() {
       }
   };
 
+  // --- TODO HANDLERS ---
+  const handleAddTodoList = async (title: string, color: string) => {
+      if (user) {
+          await addTodoList(user.uid, title, color);
+      } else {
+          const newList: TodoList = {
+              id: Date.now().toString(),
+              title,
+              color,
+              items: [],
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+          };
+          setTodoLists(prev => [newList, ...prev]);
+      }
+  };
+
+  const handleUpdateTodoList = async (listId: string, data: Partial<TodoList>) => {
+      if (user) {
+          await updateTodoList(user.uid, listId, data);
+      } else {
+          setTodoLists(prev => prev.map(list => 
+              list.id === listId ? { ...list, ...data, updatedAt: Date.now() } : list
+          ));
+      }
+  };
+
+  const handleDeleteTodoList = async (listId: string) => {
+      if (user) {
+          await deleteTodoList(user.uid, listId);
+      } else {
+          setTodoLists(prev => prev.filter(l => l.id !== listId));
+      }
+  };
+
   // Selection Logic
   const toggleSelection = (id: string) => {
     const newSet = new Set(selectedIds);
@@ -562,46 +613,47 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans transition-colors duration-300">
       
-      {/* Top Bar - Added pt-[env(safe-area-inset-top)] for mobile notch support */}
-      <header className="px-6 py-5 pt-[calc(1.25rem+env(safe-area-inset-top))] flex justify-between items-center bg-gray-950 border-b border-gray-900 sticky top-0 z-10 transition-colors duration-300">
-        <h1 className={clsx("text-xl font-bold", isMonochrome ? "text-white" : "bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-violet-400")}>
-          TallyMaster
-        </h1>
-        
-        <div className="flex items-center gap-3">
-            {/* Sync Status Indicator */}
-            <div className="flex items-center justify-center">
-                {user ? (
-                    isSyncing ? (
-                        <div title="Syncing..." className={clsx("transition-colors duration-300", isMonochrome ? "text-white" : "text-yellow-500")}>
-                            <RefreshCw size={18} className="animate-spin" />
-                        </div>
+      {/* Top Bar - Only show on main dashboard or stats when not in selection mode */}
+      {activeTab !== 'settings' && activeTab !== 'todos' && !isSelectionMode && (
+          <header className="px-6 py-5 pt-[calc(1.25rem+env(safe-area-inset-top))] flex justify-between items-center bg-gray-950 border-b border-gray-900 sticky top-0 z-10 transition-colors duration-300">
+            <h1 className={clsx("text-xl font-bold", isMonochrome ? "text-white" : "bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-violet-400")}>
+              TallyMaster
+            </h1>
+            
+            <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center">
+                    {user ? (
+                        isSyncing ? (
+                            <div title="Syncing..." className={clsx("transition-colors duration-300", isMonochrome ? "text-white" : "text-yellow-500")}>
+                                <RefreshCw size={18} className="animate-spin" />
+                            </div>
+                        ) : (
+                            <div title="Synced" className={clsx("transition-colors duration-300 relative", isMonochrome ? "text-white" : "text-green-500")}>
+                                <Cloud size={18} fill="currentColor" className="opacity-20" />
+                                <Check size={10} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-bold" strokeWidth={4} />
+                            </div>
+                        )
                     ) : (
-                        <div title="Synced" className={clsx("transition-colors duration-300 relative", isMonochrome ? "text-white" : "text-green-500")}>
-                            <Cloud size={18} fill="currentColor" className="opacity-20" />
-                            <Check size={10} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-bold" strokeWidth={4} />
+                        <div title="Local Storage (Offline)" className={clsx("transition-colors duration-300", isMonochrome ? "text-gray-500" : "text-red-500/80")}>
+                            <CloudOff size={18} />
                         </div>
-                    )
-                ) : (
-                    <div title="Local Storage (Offline)" className={clsx("transition-colors duration-300", isMonochrome ? "text-gray-500" : "text-red-500/80")}>
-                        <CloudOff size={18} />
-                    </div>
+                    )}
+                </div>
+
+                {!user && isFirebaseConfigured && (
+                    <button 
+                        onClick={() => setShowAuthModal(true)}
+                        className={clsx(
+                            "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full transition",
+                            isMonochrome ? "bg-white text-black hover:bg-gray-200" : "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30"
+                        )}
+                    >
+                        <LogIn size={14} /> Sign In
+                    </button>
                 )}
             </div>
-
-            {!user && isFirebaseConfigured && (
-                <button 
-                    onClick={() => setShowAuthModal(true)}
-                    className={clsx(
-                        "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full transition",
-                        isMonochrome ? "bg-white text-black hover:bg-gray-200" : "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30"
-                    )}
-                >
-                    <LogIn size={14} /> Sign In
-                </button>
-            )}
-        </div>
-      </header>
+          </header>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto pb-24 no-scrollbar">
@@ -746,12 +798,6 @@ export default function App() {
                                 />
                             ))}
                             
-                            {/* Add Button Logic - If simple view (no groups yet), show large add button at end of list. 
-                                If grouped, maybe show small add button per group? 
-                                Let's stick to global add button at the bottom of Ungrouped or as a FAB?
-                                Actually, let's allow adding specifically to a group? Too complex for now.
-                                Just render the big Add card only in the 'Ungrouped' section if it exists, or at the very end.
-                            */}
                             {section.id === 'ungrouped' && groups.length === 0 && (
                                 <button 
                                     onClick={() => setShowAddModal(true)}
@@ -789,9 +835,20 @@ export default function App() {
           </div>
         )}
 
+        {/* Todos Tab */}
+        {activeTab === 'todos' && (
+            <TodoManager 
+                lists={todoLists}
+                onAddList={handleAddTodoList}
+                onUpdateList={handleUpdateTodoList}
+                onDeleteList={handleDeleteTodoList}
+                isMonochrome={isMonochrome}
+            />
+        )}
+
         {/* Analytics Tab */}
         {activeTab === 'analytics' && (
-          <div className="p-6 space-y-6">
+          <div className="p-6 space-y-6 pt-24">
              <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 transition-colors duration-300">
                 <CalendarStats logs={logs} counters={counters} isMonochrome={isMonochrome} />
              </div>
@@ -834,6 +891,13 @@ export default function App() {
         >
             <LayoutDashboard size={24} />
             <span className="text-[10px] font-medium">Counters</span>
+        </button>
+        <button 
+            onClick={() => setActiveTab('todos')}
+            className={clsx("flex flex-col items-center gap-1 transition-colors flex-1", activeTab === 'todos' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-600")}
+        >
+            <CheckSquare2 size={24} />
+            <span className="text-[10px] font-medium">Todos</span>
         </button>
         <button 
             onClick={() => setActiveTab('analytics')}

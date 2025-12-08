@@ -27,7 +27,7 @@ import {
   deleteField
 } from "firebase/firestore";
 import { getStorage, FirebaseStorage } from "firebase/storage";
-import { FirebaseConfig, Counter, CounterGroup, CounterLog } from "../types";
+import { FirebaseConfig, Counter, CounterGroup, CounterLog, TodoList, TodoNode } from "../types";
 
 // Workaround for firebase/app type definition issues
 const { initializeApp, getApps, getApp } = (firebaseAppModule as any);
@@ -344,6 +344,54 @@ export const checkDailyResets = async (userId: string) => {
     await batch.commit();
     console.log("Performed daily resets");
   }
+};
+
+// --- Todo List Operations ---
+
+export const subscribeToTodoLists = (
+  userId: string,
+  callback: (lists: TodoList[]) => void
+) => {
+  if (!db) return () => {};
+  
+  const q = query(
+    collection(db, "users", userId, "todoLists"),
+    orderBy("updatedAt", "desc")
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const lists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TodoList));
+    callback(lists);
+  });
+};
+
+export const addTodoList = async (userId: string, title: string, color: string) => {
+  if (!db) throw new Error("No DB");
+  
+  const newList = {
+    title,
+    color,
+    items: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  
+  await addDoc(collection(db, "users", userId, "todoLists"), newList);
+};
+
+export const updateTodoList = async (userId: string, listId: string, data: Partial<TodoList>) => {
+  if (!db) throw new Error("No DB");
+  
+  const listRef = doc(db, "users", userId, "todoLists", listId);
+  await updateDoc(listRef, {
+    ...data,
+    updatedAt: Date.now()
+  });
+};
+
+export const deleteTodoList = async (userId: string, listId: string) => {
+  if (!db) throw new Error("No DB");
+  await deleteDoc(doc(db, "users", userId, "todoLists", listId));
 };
 
 export const isFirebaseReady = () => !!app && !!auth && !!db;

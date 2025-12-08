@@ -26,6 +26,23 @@ export interface CounterLog {
   newValue: number;
 }
 
+export interface TodoNode {
+  id: string;
+  text: string;
+  completed: boolean;
+  isExpanded: boolean;
+  children: TodoNode[];
+}
+
+export interface TodoList {
+  id: string;
+  title: string;
+  color: string;
+  items: TodoNode[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string | null;
@@ -45,4 +62,4 @@ export interface FirebaseConfig {
 
 export type AppTheme = 'default' | 'dark' | 'pitch-black';
 
-export type Tab = 'dashboard' | 'analytics' | 'settings';
+export type Tab = 'dashboard' | 'todos' | 'analytics' | 'settings';
