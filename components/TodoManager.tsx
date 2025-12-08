@@ -8,10 +8,9 @@ import {
   Circle, 
   CheckCircle2, 
   ArrowLeft,
-  MoreVertical,
   Check,
   CornerDownRight,
-  Edit2
+  Clock
 } from 'lucide-react';
 import clsx from 'clsx';
 import { playClick } from '../services/sound';
@@ -33,6 +32,26 @@ const COLORS = [
   { hex: '#06b6d4', name: 'Cyan' },
   { hex: '#f97316', name: 'Orange' },
 ];
+
+// Helper to flatten tree for preview
+const getPreviewItems = (nodes: TodoNode[], limit = 4): { id: string, completed: boolean, text: string, depth: number }[] => {
+    let preview: { id: string, completed: boolean, text: string, depth: number }[] = [];
+    
+    const traverse = (currentNodes: TodoNode[], depth: number) => {
+        for (const node of currentNodes) {
+            if (preview.length >= limit) return;
+            preview.push({ id: node.id, completed: node.completed, text: node.text, depth });
+            
+            // Only dive deeper if we haven't hit the limit
+            if (preview.length < limit && node.children && node.children.length > 0) {
+                traverse(node.children, depth + 1);
+            }
+        }
+    }
+    
+    traverse(nodes, 0);
+    return preview;
+}
 
 // Recursive component for a single todo node
 const TodoItem: React.FC<{
@@ -380,30 +399,71 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {lists.map(list => {
                  const total = list.items.length; // Approximate top-level count
-                 // Calculate real progress recursively if needed, but simplistic for now
+                 const previewItems = getPreviewItems(list.items, 4);
+
                  return (
                     <button 
                         key={list.id}
                         onClick={() => setActiveListId(list.id)}
-                        className="bg-gray-900 border border-gray-800 p-5 rounded-2xl flex flex-col items-start hover:bg-gray-800 transition-all group shadow-sm hover:shadow-md text-left"
+                        className={clsx(
+                            "bg-gray-900 border border-gray-800 p-5 rounded-2xl flex flex-col items-start hover:bg-gray-800 transition-all group shadow-sm hover:shadow-md text-left relative overflow-hidden",
+                            isMonochrome ? "hover:border-white" : "hover:border-gray-700"
+                        )}
                     >
-                        <div className="flex justify-between w-full mb-3">
+                         {/* Header: Icon + Time */}
+                        <div className="flex justify-between items-start w-full mb-3 z-10">
                             <span className="w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold shadow-sm" style={{ backgroundColor: isMonochrome ? '#fff' : list.color + '20', color: isMonochrome ? '#000' : list.color }}>
                                 {list.title.charAt(0)}
                             </span>
-                            <div className="p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <CornerDownRight size={16} className="text-gray-500" />
-                            </div>
+                            <span className="text-xs text-gray-500 font-mono bg-gray-950/50 px-2 py-1 rounded flex items-center gap-1">
+                                {new Date(list.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </span>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-200 group-hover:text-white transition-colors">{list.title}</h3>
-                        <p className="text-sm text-gray-500 mt-1">{total} items</p>
+                        
+                        {/* Title & Count */}
+                        <h3 className="text-lg font-bold text-gray-200 group-hover:text-white transition-colors mb-1">{list.title}</h3>
+                        <p className="text-xs text-gray-500 mb-4">{total} items</p>
+
+                         {/* Preview Section */}
+                        <div className="w-full space-y-1.5 z-10">
+                            {previewItems.map(item => (
+                                <div key={item.id} className="flex items-center gap-2" style={{ paddingLeft: item.depth * 12 }}>
+                                    <div className={clsx(
+                                        "w-3 h-3 rounded flex items-center justify-center border",
+                                        item.completed 
+                                            ? (isMonochrome ? "bg-white border-white" : "bg-indigo-500 border-indigo-500") 
+                                            : "border-gray-600 bg-transparent"
+                                    )}>
+                                        {item.completed && <Check size={8} className={isMonochrome ? "text-black" : "text-white"} />}
+                                    </div>
+                                    <span className={clsx(
+                                        "text-[10px] truncate max-w-[80%]",
+                                        item.completed ? "text-gray-600 line-through" : "text-gray-400"
+                                    )}>
+                                        {item.text}
+                                    </span>
+                                </div>
+                            ))}
+                            {list.items.length === 0 && (
+                                <span className="text-[10px] text-gray-700 italic">Empty list</span>
+                            )}
+                            {list.items.length > 4 && (
+                                <div className="text-[10px] text-gray-600 pl-1">...</div>
+                            )}
+                        </div>
+                        
+                        {/* Subtle Glow */}
+                        <div 
+                            className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full blur-2xl opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none"
+                            style={{ backgroundColor: isMonochrome ? '#fff' : list.color }}
+                        ></div>
                     </button>
                  )
             })}
             
             <button 
                 onClick={() => setShowAddModal(true)}
-                className="border border-dashed border-gray-800 p-5 rounded-2xl flex flex-col items-center justify-center gap-3 text-gray-500 hover:text-white hover:bg-gray-900 hover:border-gray-600 transition min-h-[140px]"
+                className="border border-dashed border-gray-800 p-5 rounded-2xl flex flex-col items-center justify-center gap-3 text-gray-500 hover:text-white hover:bg-gray-900 hover:border-gray-600 transition min-h-[180px]"
             >
                 <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", isMonochrome ? "bg-white/10" : "bg-indigo-900/20")}>
                     <Plus size={20} />
