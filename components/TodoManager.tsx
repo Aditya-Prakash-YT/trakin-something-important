@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { TodoList, TodoNode } from '../types';
 import { 
@@ -10,7 +11,11 @@ import {
   ArrowLeft,
   Check,
   Flag,
-  AlertTriangle
+  AlertTriangle,
+  LayoutGrid,
+  List,
+  Calendar,
+  ArrowUpDown
 } from 'lucide-react';
 import clsx from 'clsx';
 import { playClick } from '../services/sound';
@@ -20,7 +25,6 @@ interface TodoManagerProps {
   onAddList: (title: string, color: string) => void;
   onUpdateList: (listId: string, data: Partial<TodoList>) => void;
   onDeleteList: (listId: string) => void;
-  isMonochrome?: boolean;
 }
 
 const COLORS = [
@@ -64,14 +68,13 @@ const TodoItem: React.FC<{
   node: TodoNode;
   depth: number;
   color: string;
-  isMonochrome: boolean;
   onToggle: (id: string) => void;
   onUpdateText: (id: string, text: string) => void;
   onUpdatePriority: (id: string, priority: 'high' | 'medium' | 'low') => void;
   onAddSubItem: (parentId: string) => void;
   onDelete: (id: string) => void;
   onToggleExpand: (id: string) => void;
-}> = ({ node, depth, color, isMonochrome, onToggle, onUpdateText, onUpdatePriority, onAddSubItem, onDelete, onToggleExpand }) => {
+}> = ({ node, depth, color, onToggle, onUpdateText, onUpdatePriority, onAddSubItem, onDelete, onToggleExpand }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(node.text);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -134,12 +137,12 @@ const TodoItem: React.FC<{
           {node.completed ? (
              <CheckCircle2 
                 size={20} 
-                className={clsx("transition-colors duration-300", isMonochrome ? "text-white" : "text-green-500")} 
-                fill={isMonochrome ? "black" : "currentColor"} 
-                stroke={isMonochrome ? "currentColor" : "#111827"} 
+                className="transition-colors duration-300 text-green-500"
+                fill="currentColor"
+                stroke="#111827" 
              />
           ) : (
-             <Circle size={20} className={clsx("text-gray-600 transition-colors", isMonochrome ? "hover:text-white" : "hover:text-gray-400")} />
+             <Circle size={20} className="text-gray-600 transition-colors hover:text-gray-400" />
           )}
         </button>
 
@@ -225,7 +228,6 @@ const TodoItem: React.FC<{
                 node={child} 
                 depth={depth + 1}
                 color={color}
-                isMonochrome={isMonochrome}
                 onToggle={onToggle}
                 onUpdateText={onUpdateText}
                 onUpdatePriority={onUpdatePriority}
@@ -245,10 +247,11 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
   lists, 
   onAddList, 
   onUpdateList, 
-  onDeleteList, 
-  isMonochrome = false 
+  onDeleteList
 }) => {
   const [activeListId, setActiveListId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortMode, setSortMode] = useState<'updated' | 'alpha'>('updated');
   
   // Create List State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -263,6 +266,12 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const activeList = lists.find(l => l.id === activeListId);
+
+  // Sorting
+  const sortedLists = [...lists].sort((a, b) => {
+      if (sortMode === 'alpha') return a.title.localeCompare(b.title);
+      return b.updatedAt - a.updatedAt;
+  });
 
   // --- Recursive Helpers ---
 
@@ -396,7 +405,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                 <ArrowLeft size={20} />
              </button>
              <h2 className="text-xl font-bold text-white truncate max-w-[200px]">{activeList.title}</h2>
-             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: isMonochrome ? '#fff' : activeList.color }} />
+             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: activeList.color }} />
           </div>
           <button 
              onClick={() => setShowDeleteConfirm(true)}
@@ -420,7 +429,6 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                         node={node} 
                         depth={0}
                         color={activeList.color}
-                        isMonochrome={isMonochrome}
                         onToggle={handleToggle}
                         onUpdateText={handleUpdateText}
                         onUpdatePriority={handleUpdatePriority}
@@ -436,8 +444,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
         <div className="fixed bottom-[88px] left-0 right-0 p-4 bg-gradient-to-t from-gray-950 to-transparent pointer-events-none">
             <form onSubmit={handleAddItem} className="pointer-events-auto flex gap-2 max-w-lg mx-auto items-end">
                 <div className={clsx(
-                    "flex-1 bg-gray-900/90 backdrop-blur-md border rounded-xl flex items-center shadow-lg transition-colors p-1 relative z-20",
-                    isMonochrome ? "border-gray-700 focus-within:border-white" : "border-gray-800 focus-within:border-indigo-500"
+                    "flex-1 bg-gray-900/90 backdrop-blur-md border rounded-xl flex items-center shadow-lg transition-colors p-1 relative z-20 border-gray-800 focus-within:border-indigo-500"
                 )}>
                     {/* Priority Selector */}
                     <div className="flex items-center gap-1 pl-2 border-r border-gray-800 pr-2 mr-2">
@@ -480,8 +487,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                     type="submit"
                     disabled={!newItemText.trim()}
                     className={clsx(
-                        "h-[50px] w-[50px] rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed",
-                        isMonochrome ? "bg-white text-black" : "bg-indigo-600 text-white"
+                        "h-[50px] w-[50px] rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 text-white"
                     )}
                 >
                     <Plus size={24} />
@@ -525,84 +531,180 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
 
   // Dashboard View
   return (
-    <div className="p-6 pb-24 h-full overflow-y-auto">
-        <h2 className={clsx("text-2xl font-bold mb-6", isMonochrome ? "text-white" : "text-white")}>Lists</h2>
+    <div className="px-4 md:px-6 mt-4 pb-24 h-full overflow-y-auto">
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {lists.map(list => {
-                 const total = list.items.length; // Approximate top-level count
-                 const previewItems = getPreviewItems(list.items, 4);
+        {/* Toolbar */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div className="flex gap-1 bg-gray-900/50 p-1 rounded-xl border border-gray-800/50">
+                <button 
+                    onClick={() => setViewMode('grid')}
+                    className={clsx("p-2 rounded-lg transition-all", viewMode === 'grid' ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                >
+                    <LayoutGrid size={16} />
+                </button>
+                <button 
+                     onClick={() => setViewMode('list')}
+                     className={clsx("p-2 rounded-lg transition-all", viewMode === 'list' ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                >
+                    <List size={16} />
+                </button>
+            </div>
 
-                 return (
-                    <button 
-                        key={list.id}
-                        onClick={() => setActiveListId(list.id)}
-                        className={clsx(
-                            "bg-gray-900 border border-gray-800 p-5 rounded-2xl flex flex-col items-start hover:bg-gray-800 transition-all group shadow-sm hover:shadow-md text-left relative overflow-hidden",
-                            isMonochrome ? "hover:border-white" : "hover:border-gray-700"
-                        )}
-                    >
-                         {/* Header: Icon + Time */}
-                        <div className="flex justify-between items-start w-full mb-3 z-10">
-                            <span className="w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold shadow-sm" style={{ backgroundColor: isMonochrome ? '#fff' : list.color + '20', color: isMonochrome ? '#000' : list.color }}>
-                                {list.title.charAt(0)}
-                            </span>
-                            <span className="text-xs text-gray-500 font-mono bg-gray-950/50 px-2 py-1 rounded flex items-center gap-1">
-                                {new Date(list.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            </span>
-                        </div>
-                        
-                        {/* Title & Count */}
-                        <h3 className="text-lg font-bold text-gray-200 group-hover:text-white transition-colors mb-1">{list.title}</h3>
-                        <p className="text-xs text-gray-500 mb-4">{total} items</p>
-
-                         {/* Preview Section */}
-                        <div className="w-full space-y-1.5 z-10">
-                            {previewItems.map(item => (
-                                <div key={item.id} className="flex items-center gap-2" style={{ paddingLeft: item.depth * 12 }}>
-                                    <div className={clsx(
-                                        "w-3 h-3 rounded flex items-center justify-center border",
-                                        item.completed 
-                                            ? (isMonochrome ? "bg-white border-white" : "bg-indigo-500 border-indigo-500") 
-                                            : "border-gray-600 bg-transparent"
-                                    )}>
-                                        {item.completed && <Check size={8} className={isMonochrome ? "text-black" : "text-white"} />}
-                                    </div>
-                                    <span className={clsx(
-                                        "text-[10px] truncate max-w-[80%]",
-                                        item.completed ? "text-gray-600 line-through" : "text-gray-400"
-                                    )}>
-                                        {item.text}
-                                    </span>
-                                </div>
-                            ))}
-                            {list.items.length === 0 && (
-                                <span className="text-[10px] text-gray-700 italic">Empty list</span>
-                            )}
-                            {list.items.length > 4 && (
-                                <div className="text-[10px] text-gray-600 pl-1">...</div>
-                            )}
-                        </div>
-                        
-                        {/* Subtle Glow */}
-                        <div 
-                            className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full blur-2xl opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none"
-                            style={{ backgroundColor: isMonochrome ? '#fff' : list.color }}
-                        ></div>
-                    </button>
-                 )
-            })}
-            
-            <button 
-                onClick={() => setShowAddModal(true)}
-                className="border border-dashed border-gray-800 p-5 rounded-2xl flex flex-col items-center justify-center gap-3 text-gray-500 hover:text-white hover:bg-gray-900 hover:border-gray-600 transition min-h-[180px]"
-            >
-                <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", isMonochrome ? "bg-white/10" : "bg-indigo-900/20")}>
-                    <Plus size={20} />
-                </div>
-                <span className="font-medium text-sm">Create List</span>
-            </button>
+            <div className="flex gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar items-center">
+                 <button 
+                    onClick={() => setSortMode('updated')}
+                    className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                        sortMode === 'updated' 
+                            ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" 
+                            : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
+                    )}
+                >
+                    <Calendar size={14} />
+                    <span className="hidden sm:inline text-xs font-medium">Recent</span>
+                </button>
+                <button 
+                    onClick={() => setSortMode('alpha')}
+                    className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                        sortMode === 'alpha' 
+                            ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" 
+                            : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
+                    )}
+                >
+                    <ArrowUpDown size={14} />
+                    <span className="hidden sm:inline text-xs font-medium">A-Z</span>
+                </button>
+            </div>
         </div>
+
+        {lists.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[50vh] animate-in zoom-in-95 duration-500">
+                <button 
+                    onClick={() => setShowAddModal(true)}
+                    className={clsx(
+                        "w-full max-w-sm h-64 p-8 border border-dashed border-gray-800 rounded-3xl flex flex-col items-center justify-center gap-4 text-gray-500 hover:text-white hover:bg-gray-900 hover:border-gray-600 transition group"
+                    )}
+                >
+                    <div className={clsx("w-16 h-16 rounded-full flex items-center justify-center transition-colors bg-indigo-900/20 group-hover:bg-indigo-600 group-hover:text-white")}>
+                        <Plus size={32} />
+                    </div>
+                    <span className="font-bold text-lg">Create List</span>
+                </button>
+            </div>
+        ) : (
+            <div className={clsx("grid gap-4", viewMode === 'grid' ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1")}>
+                {sortedLists.map(list => {
+                     const total = list.items.length; // Approximate top-level count
+                     const previewItems = getPreviewItems(list.items, 4);
+
+                     // List View Render
+                     if (viewMode === 'list') {
+                         return (
+                            <button 
+                                key={list.id}
+                                onClick={() => setActiveListId(list.id)}
+                                className={clsx(
+                                    "w-full bg-gray-900 transition-all p-4 rounded-xl border flex items-center justify-between shadow-sm group relative hover:border-gray-700 border-gray-800 hover:bg-gray-800"
+                                )}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div 
+                                        className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-gray-950 shadow-sm"
+                                        style={{ backgroundColor: list.color, color: 'rgba(0,0,0,0.8)' }} 
+                                    >
+                                        {list.title.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="block text-gray-300 font-medium text-sm group-hover:text-white transition-colors">{list.title}</span>
+                                        <span className="text-gray-500 text-[10px]">
+                                            {new Date(list.updatedAt).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="text-gray-500 text-xs font-medium flex items-center gap-2">
+                                    <span className={clsx("px-2 py-0.5 rounded text-[10px] bg-indigo-900/20 text-indigo-400")}>
+                                        {total} items
+                                    </span>
+                                    <ChevronRight size={14} className="text-gray-600" />
+                                </div>
+                            </button>
+                         )
+                     }
+
+                     // Grid View Render
+                     return (
+                        <button 
+                            key={list.id}
+                            onClick={() => setActiveListId(list.id)}
+                            className={clsx(
+                                "bg-gray-900 border border-gray-800 p-5 rounded-2xl flex flex-col items-start hover:bg-gray-800 transition-all group shadow-sm hover:shadow-md text-left relative overflow-hidden hover:border-gray-700"
+                            )}
+                        >
+                             {/* Header: Icon + Time */}
+                            <div className="flex justify-between items-start w-full mb-3 z-10">
+                                <span className="w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold shadow-sm" style={{ backgroundColor: list.color + '20', color: list.color }}>
+                                    {list.title.charAt(0)}
+                                </span>
+                                <span className="text-xs text-gray-500 font-mono bg-gray-950/50 px-2 py-1 rounded flex items-center gap-1">
+                                    {new Date(list.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </span>
+                            </div>
+                            
+                            {/* Title & Count */}
+                            <h3 className="text-lg font-bold text-gray-200 group-hover:text-white transition-colors mb-1">{list.title}</h3>
+                            <p className="text-xs text-gray-500 mb-4">{total} items</p>
+
+                             {/* Preview Section */}
+                            <div className="w-full space-y-1.5 z-10">
+                                {previewItems.map(item => (
+                                    <div key={item.id} className="flex items-center gap-2" style={{ paddingLeft: item.depth * 12 }}>
+                                        <div className={clsx(
+                                            "w-3 h-3 rounded flex items-center justify-center border",
+                                            item.completed 
+                                                ? "bg-indigo-500 border-indigo-500" 
+                                                : "border-gray-600 bg-transparent"
+                                        )}>
+                                            {item.completed && <Check size={8} className="text-white" />}
+                                        </div>
+                                        <span className={clsx(
+                                            "text-[10px] truncate max-w-[80%]",
+                                            item.completed ? "text-gray-600 line-through" : "text-gray-400"
+                                        )}>
+                                            {item.text}
+                                        </span>
+                                    </div>
+                                ))}
+                                {list.items.length === 0 && (
+                                    <span className="text-[10px] text-gray-700 italic">Empty list</span>
+                                )}
+                                {list.items.length > 4 && (
+                                    <div className="text-[10px] text-gray-600 pl-1">...</div>
+                                )}
+                            </div>
+                            
+                            {/* Subtle Glow */}
+                            <div 
+                                className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full blur-2xl opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none"
+                                style={{ backgroundColor: list.color }}
+                            ></div>
+                        </button>
+                     )
+                })}
+                
+                <button 
+                    onClick={() => setShowAddModal(true)}
+                    className={clsx(
+                        "border border-dashed border-gray-800 rounded-2xl flex items-center justify-center text-gray-500 hover:text-white hover:bg-gray-900 hover:border-gray-600 transition group",
+                        viewMode === 'grid' ? "flex-col p-5 gap-3 min-h-[180px]" : "flex-row p-4 gap-3 min-h-[80px]"
+                    )}
+                >
+                    <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-indigo-900/20 group-hover:bg-indigo-600 group-hover:text-white")}>
+                        <Plus size={20} />
+                    </div>
+                    <span className="font-medium text-sm">Create List</span>
+                </button>
+            </div>
+        )}
 
         {/* Add List Modal */}
         {showAddModal && (
@@ -619,8 +721,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                                 value={newTitle}
                                 onChange={(e) => setNewTitle(e.target.value)}
                                 className={clsx(
-                                    "w-full bg-gray-950 border rounded-xl p-3 text-white focus:outline-none mt-1 transition-colors",
-                                    isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-700 focus:border-indigo-500"
+                                    "w-full bg-gray-950 border rounded-xl p-3 text-white focus:outline-none mt-1 transition-colors border-gray-700 focus:border-indigo-500"
                                 )}
                                 placeholder="Groceries..."
                             />
@@ -651,8 +752,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                         <button 
                             onClick={handleCreateList}
                             className={clsx(
-                                "flex-1 py-3 rounded-xl font-bold transition",
-                                isMonochrome ? "bg-white text-black" : "bg-indigo-600 text-white hover:bg-indigo-500"
+                                "flex-1 py-3 rounded-xl font-bold transition bg-indigo-600 text-white hover:bg-indigo-500"
                             )}
                         >
                             Create

@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { CounterLog, Counter } from '../types';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Filter, X, Clock, Activity, BarChart3 } from 'lucide-react';
@@ -6,7 +7,6 @@ import clsx from 'clsx';
 interface CalendarStatsProps {
   logs: CounterLog[];
   counters: Counter[];
-  isMonochrome?: boolean;
 }
 
 // --- Date Helper Functions (replacing date-fns) ---
@@ -52,7 +52,7 @@ const formatTime = (d: Date) => d.toLocaleTimeString('en-US', { hour: 'numeric',
 
 // --------------------------------------------------
 
-export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, isMonochrome = false }) => {
+export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedCounterId, setSelectedCounterId] = useState<string | 'all'>('all');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -135,13 +135,6 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
     if (count === 0) return 'bg-gray-800/50 border-gray-800';
     const intensity = count / maxCount;
     
-    if (isMonochrome) {
-        if (intensity < 0.25) return 'bg-white/10 border-white/10 text-gray-400';
-        if (intensity < 0.5) return 'bg-white/30 border-white/20 text-gray-200';
-        if (intensity < 0.75) return 'bg-white/60 border-white/40 text-black';
-        return 'bg-white border-white text-black font-bold shadow-lg shadow-white/20';
-    }
-
     if (intensity < 0.25) return 'bg-indigo-900/40 border-indigo-500/30 text-indigo-200';
     if (intensity < 0.5) return 'bg-indigo-700/60 border-indigo-500/50 text-indigo-100';
     if (intensity < 0.75) return 'bg-indigo-600/80 border-indigo-400/60 text-white';
@@ -157,8 +150,8 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
         {/* Header with Controls */}
         <div className="flex items-center justify-between">
            <div className="flex items-center gap-2">
-              <h2 className={clsx("text-xl font-bold flex items-center gap-2", isMonochrome ? "text-white" : "text-white")}>
-                <CalendarIcon className={isMonochrome ? "text-white" : "text-indigo-400"} size={20} />
+              <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+                <CalendarIcon className="text-indigo-400" size={20} />
                 {formatMonthYear(currentDate)}
               </h2>
            </div>
@@ -180,7 +173,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
                 className={clsx(
                     "text-xs px-3 py-1.5 rounded-full border transition whitespace-nowrap",
                     selectedCounterId === 'all' 
-                    ? (isMonochrome ? "bg-white text-black border-white" : "bg-gray-700 border-gray-600 text-white")
+                    ? "bg-gray-700 border-gray-600 text-white"
                     : "bg-transparent border-gray-800 text-gray-500 hover:bg-gray-900"
                 )}
             >
@@ -193,11 +186,11 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
                     className={clsx(
                         "text-xs px-3 py-1.5 rounded-full border transition whitespace-nowrap flex items-center gap-2",
                         selectedCounterId === c.id
-                        ? (isMonochrome ? "bg-white text-black border-white" : "bg-gray-800 text-white border-gray-600")
+                        ? "bg-gray-800 text-white border-gray-600"
                         : "bg-transparent border-gray-800 text-gray-500 hover:bg-gray-900"
                     )}
                 >
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: isMonochrome ? '#000' : c.color }} />
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
                     {c.title}
                 </button>
             ))}
@@ -229,9 +222,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
                         className={clsx(
                             "aspect-square rounded-xl border flex flex-col items-center justify-center relative transition-all duration-200 group active:scale-95",
                             getIntensityColor(count),
-                            isCurrentDay && (isMonochrome 
-                                ? "ring-2 ring-white ring-offset-2 ring-offset-black" 
-                                : "ring-2 ring-indigo-400 ring-offset-2 ring-offset-gray-900"),
+                            isCurrentDay && "ring-2 ring-indigo-400 ring-offset-2 ring-offset-gray-900",
                             isSelected && "ring-2 ring-white ring-offset-2 ring-offset-gray-900 z-10 scale-110 shadow-xl"
                         )}
                     >
@@ -259,7 +250,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
           </div>
           <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
               <div className="text-gray-500 text-xs uppercase font-bold mb-1">Active Days</div>
-              <div className={clsx("text-2xl font-bold", isMonochrome ? "text-white" : "text-indigo-400")}>
+              <div className="text-2xl font-bold text-indigo-400">
                  {dailyData.size}
               </div>
           </div>
@@ -313,7 +304,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
                                             <div className="flex items-center gap-3">
                                                 <div 
                                                     className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-gray-950 shadow-sm" 
-                                                    style={{ backgroundColor: isMonochrome ? '#fff' : (item.counter?.color || '#374151') }}
+                                                    style={{ backgroundColor: item.counter?.color || '#374151' }}
                                                 >
                                                     {item.counter?.title.charAt(0) || '?'}
                                                 </div>
@@ -323,7 +314,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
                                             </div>
                                             <div className={clsx(
                                                 "font-bold font-mono",
-                                                item.value > 0 ? (isMonochrome ? "text-white" : "text-green-400") : "text-gray-400"
+                                                item.value > 0 ? "text-green-400" : "text-gray-400"
                                             )}>
                                                 {item.value > 0 ? '+' : ''}{item.value}
                                             </div>
@@ -356,7 +347,7 @@ export const CalendarStats: React.FC<CalendarStatsProps> = ({ logs, counters, is
                                                 </div>
                                                 <span className={clsx(
                                                     "text-xs font-bold", 
-                                                    log.valueChange > 0 ? (isMonochrome ? "text-white" : "text-green-500") : "text-red-500"
+                                                    log.valueChange > 0 ? "text-green-500" : "text-red-500"
                                                 )}>
                                                     {log.valueChange > 0 ? '+' : ''}{log.valueChange}
                                                 </span>

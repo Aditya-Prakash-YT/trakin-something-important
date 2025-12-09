@@ -1,3 +1,4 @@
+
 export interface CounterGroup {
   id: string;
   name: string;
@@ -61,6 +62,12 @@ export interface FirebaseConfig {
   measurementId?: string;
 }
 
-export type AppTheme = 'default' | 'dark' | 'pitch-black';
+export type BaseTheme = 'default' | 'medium-dark' | 'dark' | 'extra-dark' | 'oled';
+export type ComponentTheme = 'default' | 'high-contrast';
+
+export interface ThemeSettings {
+  base: BaseTheme;
+  component: ComponentTheme;
+}
 
 export type Tab = 'dashboard' | 'todos' | 'analytics' | 'settings';

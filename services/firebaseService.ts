@@ -1,3 +1,4 @@
+
 import * as firebaseAppModule from "firebase/app";
 import { 
   getAuth, 
@@ -24,10 +25,11 @@ import {
   deleteDoc,
   orderBy,
   getDocs,
-  deleteField
+  deleteField,
+  setDoc
 } from "firebase/firestore";
 import { getStorage, FirebaseStorage } from "firebase/storage";
-import { FirebaseConfig, Counter, CounterGroup, CounterLog, TodoList, TodoNode } from "../types";
+import { FirebaseConfig, Counter, CounterGroup, CounterLog, TodoList, TodoNode, ThemeSettings } from "../types";
 
 // Workaround for firebase/app type definition issues
 const { initializeApp, getApps, getApp } = (firebaseAppModule as any);
@@ -392,6 +394,22 @@ export const updateTodoList = async (userId: string, listId: string, data: Parti
 export const deleteTodoList = async (userId: string, listId: string) => {
   if (!db) throw new Error("No DB");
   await deleteDoc(doc(db, "users", userId, "todoLists", listId));
+};
+
+// --- Settings Operations ---
+
+export const updateUserSettings = async (userId: string, settings: ThemeSettings) => {
+    if (!db) throw new Error("No DB");
+    await setDoc(doc(db, "users", userId, "settings", "theme"), settings);
+};
+
+export const subscribeToUserSettings = (userId: string, callback: (settings: ThemeSettings) => void) => {
+    if (!db) return () => {};
+    return onSnapshot(doc(db, "users", userId, "settings", "theme"), (doc) => {
+        if (doc.exists()) {
+            callback(doc.data() as ThemeSettings);
+        }
+    });
 };
 
 export const isFirebaseReady = () => !!app && !!auth && !!db;

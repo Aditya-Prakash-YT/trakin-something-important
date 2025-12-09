@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   User, 
@@ -27,7 +28,7 @@ import {
   CheckSquare2,
   FolderPlus
 } from 'lucide-react';
-import { Counter, CounterLog, Tab, AppTheme, CounterGroup, TodoList } from './types';
+import { Counter, CounterLog, Tab, ThemeSettings, CounterGroup, TodoList } from './types';
 import { 
   initFirebase, 
   subscribeToAuth, 
@@ -48,7 +49,9 @@ import {
   subscribeToTodoLists,
   addTodoList,
   updateTodoList,
-  deleteTodoList
+  deleteTodoList,
+  subscribeToUserSettings,
+  updateUserSettings
 } from './services/firebaseService';
 import { CounterView } from './components/CounterView';
 import { Settings } from './components/Settings';
@@ -74,7 +77,6 @@ interface CounterCardProps {
   counter: Counter;
   onClick: () => void;
   viewMode: ViewMode;
-  isMonochrome: boolean;
   selectionMode: boolean;
   isSelected: boolean;
   onToggleSelection: () => void;
@@ -84,7 +86,6 @@ const CounterCard: React.FC<CounterCardProps> = ({
     counter, 
     onClick, 
     viewMode, 
-    isMonochrome, 
     selectionMode, 
     isSelected, 
     onToggleSelection 
@@ -107,9 +108,8 @@ const CounterCard: React.FC<CounterCardProps> = ({
 
   const isTargetReached = counter.target !== undefined && counter.count >= counter.target;
   
-  // Theme Overrides
-  const displayColor = isMonochrome ? '#ffffff' : counter.color;
-  const targetColor = isMonochrome ? '#ffffff' : '#4ade80';
+  const displayColor = counter.color;
+  const targetColor = '#4ade80';
 
   const handleClick = (e: React.MouseEvent) => {
       if (selectionMode) {
@@ -125,10 +125,10 @@ const CounterCard: React.FC<CounterCardProps> = ({
         <button 
             onClick={handleClick}
             className={clsx(
-                "w-full bg-gray-900 transition-all p-4 rounded-xl border flex items-center justify-between shadow-sm group relative",
+                "w-full transition-all p-4 rounded-xl border flex items-center justify-between shadow-sm group relative bg-gray-900 border-gray-800",
                 isTargetReached 
-                    ? (isMonochrome ? "border-white bg-white/10" : "border-green-500/30 bg-green-900/5") 
-                    : (isSelected && selectionMode ? "border-indigo-500 bg-indigo-900/20" : "border-gray-800 hover:bg-gray-800")
+                    ? "border-green-500/30 bg-green-900/10" 
+                    : (isSelected && selectionMode ? "border-indigo-500 bg-indigo-900/20" : "hover:bg-gray-900/50 hover:border-gray-700")
             )}
         >
             <div className="flex items-center gap-4">
@@ -145,7 +145,7 @@ const CounterCard: React.FC<CounterCardProps> = ({
                     {counter.title.charAt(0).toUpperCase()}
                     {counter.resetDaily && (
                         <div className="absolute -bottom-1 -right-1 bg-gray-900 rounded-full p-0.5 border border-gray-700">
-                             <RotateCcw size={8} className={isMonochrome ? "text-white" : "text-blue-400"} />
+                             <RotateCcw size={8} className="text-blue-400" />
                         </div>
                     )}
                 </div>
@@ -161,7 +161,7 @@ const CounterCard: React.FC<CounterCardProps> = ({
                  {counter.target && (
                     <div className={clsx(
                         "text-[10px] font-semibold flex items-center gap-1",
-                        isTargetReached ? (isMonochrome ? "text-white" : "text-green-400") : "text-gray-600"
+                        isTargetReached ? "text-green-400" : "text-gray-600"
                     )}>
                         <Target size={12} />
                         {Math.round((counter.count / counter.target) * 100)}%
@@ -185,10 +185,10 @@ const CounterCard: React.FC<CounterCardProps> = ({
     <button 
       onClick={handleClick}
       className={clsx(
-          "bg-gray-900 transition-all p-5 rounded-2xl border flex flex-col items-start space-y-3 shadow-lg relative overflow-hidden group min-h-[160px]",
+          "transition-all p-5 rounded-2xl border flex flex-col items-start space-y-3 shadow-lg relative overflow-hidden group min-h-[160px] bg-gray-900 border-gray-800 hover:bg-gray-800",
           isTargetReached 
-             ? (isMonochrome ? "border-white" : "border-green-500/30") 
-             : (isSelected && selectionMode ? "border-indigo-500 ring-1 ring-indigo-500/50" : "border-gray-800 hover:bg-gray-800")
+             ? "border-green-500/30 ring-1 ring-green-500/20" 
+             : (isSelected && selectionMode ? "border-indigo-500 ring-1 ring-indigo-500/50" : "")
       )}
     >
       {/* Selection Overlay Checkbox */}
@@ -205,7 +205,7 @@ const CounterCard: React.FC<CounterCardProps> = ({
       <div 
         className={clsx(
             "absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none transition-opacity duration-500",
-            isTargetReached ? "opacity-30" : "opacity-20"
+            isTargetReached ? "opacity-30" : "opacity-10"
         )}
         style={{ backgroundColor: isTargetReached ? targetColor : displayColor }}
       ></div>
@@ -213,11 +213,8 @@ const CounterCard: React.FC<CounterCardProps> = ({
       <div className="flex justify-between w-full items-start">
           <span className="text-gray-400 text-xs font-medium uppercase tracking-wider truncate w-full text-left pr-4">{counter.title}</span>
           {counter.resetDaily && (
-              <div className={clsx(
-                  "p-1.5 rounded-md border",
-                  isMonochrome ? "bg-white/20 border-white/20" : "bg-blue-900/20 border-blue-500/20"
-              )} title="Resets Daily">
-                  <RotateCcw size={12} className={isMonochrome ? "text-white" : "text-blue-400"} />
+              <div className="p-1.5 rounded-md border bg-blue-900/20 border-blue-500/20" title="Resets Daily">
+                  <RotateCcw size={12} className="text-blue-400" />
               </div>
           )}
       </div>
@@ -238,7 +235,7 @@ const CounterCard: React.FC<CounterCardProps> = ({
           {counter.target && (
               <div className={clsx(
                   "text-[10px] font-semibold flex items-center gap-1",
-                  isTargetReached ? (isMonochrome ? "text-white" : "text-green-400") : "text-gray-500"
+                  isTargetReached ? "text-green-400" : "text-gray-500"
               )}>
                   <Target size={10} />
                   {Math.round((counter.count / counter.target) * 100)}%
@@ -253,7 +250,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [counters, setCounters] = useState<Counter[]>([]);
   const [groups, setGroups] = useState<CounterGroup[]>([]);
-  const [todoLists, setTodoLists] = useState<TodoList[]>([]); // NEW STATE
+  const [todoLists, setTodoLists] = useState<TodoList[]>([]); 
   const [logs, setLogs] = useState<CounterLog[]>([]);
   const [activeCounterId, setActiveCounterId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -271,10 +268,10 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   // Theme State
-  const [theme, setTheme] = useState<AppTheme>(() => {
-    return (localStorage.getItem('app_theme') as AppTheme) || 'default';
+  const [themeSettings, setThemeSettings] = useState<ThemeSettings>(() => {
+    const stored = localStorage.getItem('app_theme_settings');
+    return stored ? JSON.parse(stored) : { base: 'default', component: 'default' };
   });
-  const isMonochrome = theme === 'pitch-black';
   
   // Create Counter State
   const [newCounterTitle, setNewCounterTitle] = useState("");
@@ -291,25 +288,80 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [sortMode, setSortMode] = useState<SortMode>('updated');
 
-  // Initialize Theme
+  // Handle Theme Update
+  const handleThemeChange = (newSettings: Partial<ThemeSettings>) => {
+      const nextSettings = { ...themeSettings, ...newSettings };
+      setThemeSettings(nextSettings);
+      localStorage.setItem('app_theme_settings', JSON.stringify(nextSettings));
+      if (user) {
+          updateUserSettings(user.uid, nextSettings);
+      }
+  };
+
+  // Initialize Theme CSS Variables
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === 'pitch-black') {
-        root.style.setProperty('--c-gray-950', '0 0 0');
-        root.style.setProperty('--c-gray-900', '0 0 0');
-        root.style.setProperty('--c-gray-850', '20 20 20');
-    } else if (theme === 'dark') {
-        root.style.setProperty('--c-gray-950', '24 24 27'); // Zinc 900
-        root.style.setProperty('--c-gray-900', '39 39 42'); // Zinc 800
-        root.style.setProperty('--c-gray-850', '63 63 70'); // Zinc 700
-    } else {
-        // Default
-        root.style.setProperty('--c-gray-950', '3 7 18');
-        root.style.setProperty('--c-gray-900', '17 24 39');
-        root.style.setProperty('--c-gray-850', '31 41 55');
+    const { base, component } = themeSettings;
+
+    // Apply Base Theme (Background)
+    switch(base) {
+        case 'oled':
+            root.style.setProperty('--c-gray-950', '0 0 0'); // Pure Black
+            break;
+        case 'extra-dark':
+            root.style.setProperty('--c-gray-950', '9 9 11'); // Zinc 950
+            break;
+        case 'dark':
+            root.style.setProperty('--c-gray-950', '24 24 27'); // Zinc 900
+            break;
+        case 'medium-dark':
+             root.style.setProperty('--c-gray-950', '15 23 42'); // Slate 900
+             break;
+        case 'default':
+        default:
+            root.style.setProperty('--c-gray-950', '3 7 18'); // Default Deep Blue
+            break;
     }
-    localStorage.setItem('app_theme', theme);
-  }, [theme]);
+
+    // Apply Component Theme (Card Backgrounds and Borders)
+    // We adjust gray-900 (card bg) and gray-850 (border) relative to the choice
+    if (component === 'high-contrast') {
+        // High Contrast: Darker cards, Lighter borders
+        if (base === 'oled' || base === 'extra-dark') {
+            root.style.setProperty('--c-gray-900', '0 0 0'); 
+            root.style.setProperty('--c-gray-850', '82 82 91'); // Zinc 600
+        } else {
+             root.style.setProperty('--c-gray-900', '9 9 11'); // Darker than normal
+             root.style.setProperty('--c-gray-850', '75 85 99'); // Gray 600
+        }
+    } else {
+        // Default Component Theme
+        switch(base) {
+            case 'oled':
+                root.style.setProperty('--c-gray-900', '24 24 27'); // Zinc 900 Cards on Black
+                root.style.setProperty('--c-gray-850', '39 39 42');
+                break;
+            case 'extra-dark':
+                root.style.setProperty('--c-gray-900', '24 24 27'); // Zinc 900
+                root.style.setProperty('--c-gray-850', '39 39 42');
+                break;
+            case 'dark':
+                 root.style.setProperty('--c-gray-900', '39 39 42'); // Zinc 800
+                 root.style.setProperty('--c-gray-850', '63 63 70');
+                 break;
+            case 'medium-dark':
+                 root.style.setProperty('--c-gray-900', '30 41 59'); // Slate 800
+                 root.style.setProperty('--c-gray-850', '51 65 85');
+                 break;
+            case 'default':
+            default:
+                 root.style.setProperty('--c-gray-900', '17 24 39');
+                 root.style.setProperty('--c-gray-850', '31 41 55');
+                 break;
+        }
+    }
+
+  }, [themeSettings]);
 
   // Initialize Firebase
   useEffect(() => {
@@ -325,18 +377,15 @@ export default function App() {
       });
       return () => unsubAuth();
     } else {
-        // Load local counters (legacy support)
         const localData = localStorage.getItem('local_counters');
         if (localData) {
             const c: Counter[] = JSON.parse(localData);
             setCounters(c);
         }
-        // Load local groups
         const localGroups = localStorage.getItem('local_groups');
         if (localGroups) {
             setGroups(JSON.parse(localGroups));
         }
-        // Local todos
         const localTodos = localStorage.getItem('local_todos');
         if (localTodos) {
             setTodoLists(JSON.parse(localTodos));
@@ -344,7 +393,6 @@ export default function App() {
     }
   }, []);
 
-  // Sync counters and groups and todos
   useEffect(() => {
     if (user) {
       const unsubCounters = subscribeToCounters(user.uid, (data, syncing) => {
@@ -357,6 +405,10 @@ export default function App() {
       const unsubTodos = subscribeToTodoLists(user.uid, (data) => {
           setTodoLists(data);
       });
+      const unsubSettings = subscribeToUserSettings(user.uid, (settings) => {
+          setThemeSettings(settings);
+          localStorage.setItem('app_theme_settings', JSON.stringify(settings));
+      });
       
       getHistoryLogs(user.uid).then(setLogs);
       
@@ -364,106 +416,69 @@ export default function App() {
         unsubCounters();
         unsubGroups();
         unsubTodos();
+        unsubSettings();
       };
     } else if (!isFirebaseConfigured) {
-        // Sync to local storage
         localStorage.setItem('local_counters', JSON.stringify(counters));
         localStorage.setItem('local_groups', JSON.stringify(groups));
         localStorage.setItem('local_todos', JSON.stringify(todoLists));
     }
   }, [user, counters.length, groups.length, todoLists, isFirebaseConfigured]); 
 
-  // Group Management Handlers
+  // Handlers ... (Keep existing handlers)
   const handleAddGroup = async () => {
     if (!newGroupName.trim()) return;
-    
-    if (user) {
-      await addGroup(user.uid, newGroupName);
-    } else {
-        const newGroup: CounterGroup = {
-            id: Date.now().toString(),
-            name: newGroupName,
-            createdAt: Date.now()
-        };
-        setGroups(prev => [...prev, newGroup]);
+    if (user) await addGroup(user.uid, newGroupName);
+    else {
+        setGroups(prev => [...prev, { id: Date.now().toString(), name: newGroupName, createdAt: Date.now() }]);
     }
     setNewGroupName("");
   };
 
   const handleDeleteGroup = async (groupId: string) => {
-    if (confirm("Delete this group? Counters in this group will be moved to Ungrouped.")) {
-        if (user) {
-            await deleteGroup(user.uid, groupId);
-        } else {
-            // Remove group
+    if (confirm("Delete this group?")) {
+        if (user) await deleteGroup(user.uid, groupId);
+        else {
             setGroups(prev => prev.filter(g => g.id !== groupId));
-            
-            // Ungroup counters
             setCounters(prev => prev.map(c => c.groupId === groupId ? { ...c, groupId: undefined } : c));
         }
     }
   };
 
   const handleUpdateCounterGroup = async (id: string, groupId: string | null) => {
-      if (user) {
-          await updateCounterGroup(user.uid, id, groupId);
-      } else {
-          setCounters(prev => prev.map(c => c.id === id ? { ...c, groupId: groupId || undefined } : c));
-      }
+      if (user) await updateCounterGroup(user.uid, id, groupId);
+      else setCounters(prev => prev.map(c => c.id === id ? { ...c, groupId: groupId || undefined } : c));
   };
 
-
-  // Derived state for sorting and grouping
   const groupedCounters = useMemo(() => {
-    // 1. Sort counters first
     const c = [...counters];
     let sorted = c;
     switch (sortMode) {
-        case 'alpha':
-            sorted = c.sort((a, b) => a.title.localeCompare(b.title));
-            break;
-        case 'value':
-            sorted = c.sort((a, b) => b.count - a.count);
-            break;
-        case 'created':
-            sorted = c.sort((a, b) => b.createdAt - a.createdAt);
-            break;
-        case 'updated':
-        default:
-            sorted = c.sort((a, b) => b.lastUpdated - a.lastUpdated);
-            break;
+        case 'alpha': sorted = c.sort((a, b) => a.title.localeCompare(b.title)); break;
+        case 'value': sorted = c.sort((a, b) => b.count - a.count); break;
+        case 'created': sorted = c.sort((a, b) => b.createdAt - a.createdAt); break;
+        case 'updated': default: sorted = c.sort((a, b) => b.lastUpdated - a.lastUpdated); break;
     }
 
-    // 2. Group them
     const sections: { id: string, name: string, counters: Counter[] }[] = [];
-    
-    // Ungrouped
     const ungrouped = sorted.filter(c => !c.groupId || !groups.find(g => g.id === c.groupId));
-    if (ungrouped.length > 0) {
-        sections.push({ id: 'ungrouped', name: 'Ungrouped', counters: ungrouped });
-    }
-
-    // Grouped Sections
+    if (ungrouped.length > 0) sections.push({ id: 'ungrouped', name: 'Ungrouped', counters: ungrouped });
     groups.forEach(g => {
         const groupCounters = sorted.filter(c => c.groupId === g.id);
-        if (groupCounters.length > 0) {
-            sections.push({ id: g.id, name: g.name, counters: groupCounters });
-        }
+        if (groupCounters.length > 0) sections.push({ id: g.id, name: g.name, counters: groupCounters });
     });
-
     return sections;
   }, [counters, groups, sortMode]);
 
   const handleCreateCounter = async () => {
     if (!newCounterTitle.trim()) return;
-    
     const target = hasTarget && targetValue ? parseInt(targetValue) : undefined;
     const groupId = newCounterGroupId || undefined;
 
     if (user) {
       await addCounter(user.uid, newCounterTitle, newCounterColor, target, resetDaily, groupId);
     } else {
-      const newCounter: Counter = {
+      setCounters(prev => [{
         id: Date.now().toString(),
         title: newCounterTitle,
         count: 0,
@@ -474,39 +489,20 @@ export default function App() {
         resetDaily,
         lastResetDate: resetDaily ? new Date().toISOString().split('T')[0] : undefined,
         groupId
-      };
-      setCounters(prev => [newCounter, ...prev]);
+      }, ...prev]);
     }
-    
-    // Reset Form
-    setNewCounterTitle("");
-    setNewCounterColor(COLORS[0].hex);
-    setHasTarget(false);
-    setTargetValue("");
-    setResetDaily(true);
-    setNewCounterGroupId("");
-    setShowAddModal(false);
+    setNewCounterTitle(""); setNewCounterColor(COLORS[0].hex); setHasTarget(false); setTargetValue(""); setResetDaily(true); setNewCounterGroupId(""); setShowAddModal(false);
   };
 
   const handleUpdateCounter = async (id: string, delta: number) => {
     if (user) {
       const counter = counters.find(c => c.id === id);
-      if(counter) {
-          await updateCounterValue(user.uid, id, delta, counter.count + delta);
-      }
+      if(counter) await updateCounterValue(user.uid, id, delta, counter.count + delta);
     } else {
       setCounters(prev => prev.map(c => {
         if (c.id === id) {
             const next = c.count + delta;
-            // Also log locally for chart?
-            const log: CounterLog = {
-                id: Date.now().toString(),
-                counterId: id,
-                timestamp: Date.now(),
-                valueChange: delta,
-                newValue: next
-            }
-            setLogs(prevLogs => [...prevLogs, log]);
+            setLogs(prevLogs => [...prevLogs, { id: Date.now().toString(), counterId: id, timestamp: Date.now(), valueChange: delta, newValue: next }]);
             return { ...c, count: next, lastUpdated: Date.now() };
         }
         return c;
@@ -515,111 +511,57 @@ export default function App() {
   };
 
   const handleRenameCounter = async (id: string, newTitle: string) => {
-      if (user) {
-          await updateCounterTitle(user.uid, id, newTitle);
-      } else {
-          setCounters(prev => prev.map(c => c.id === id ? { ...c, title: newTitle } : c));
-      }
+      if (user) await updateCounterTitle(user.uid, id, newTitle);
+      else setCounters(prev => prev.map(c => c.id === id ? { ...c, title: newTitle } : c));
   };
 
   const handleUpdateTarget = async (id: string, newTarget: number | null) => {
-      if (user) {
-          await updateCounterTarget(user.uid, id, newTarget);
-      } else {
-          setCounters(prev => prev.map(c => {
-             if (c.id === id) {
-                 const updated = { ...c };
-                 if (newTarget === null) delete updated.target;
-                 else updated.target = newTarget;
-                 return updated;
-             }
-             return c;
-          }));
-      }
+      if (user) await updateCounterTarget(user.uid, id, newTarget);
+      else setCounters(prev => prev.map(c => c.id === id ? { ...c, target: newTarget || undefined } : c));
   };
 
   const handleDeleteCounter = async (id: string) => {
-      try {
-        if (user) {
-            await deleteCounter(user.uid, id);
-        } else {
-            setCounters(prev => prev.filter(c => c.id !== id));
-        }
-        setActiveCounterId(null);
-      } catch (error) {
-        console.error("Failed to delete counter", error);
-        alert("Failed to delete counter. Please try again.");
-      }
+      if (user) await deleteCounter(user.uid, id);
+      else setCounters(prev => prev.filter(c => c.id !== id));
+      setActiveCounterId(null);
   };
 
-  // --- TODO HANDLERS ---
   const handleAddTodoList = async (title: string, color: string) => {
-      if (user) {
-          await addTodoList(user.uid, title, color);
-      } else {
-          const newList: TodoList = {
-              id: Date.now().toString(),
-              title,
-              color,
-              items: [],
-              createdAt: Date.now(),
-              updatedAt: Date.now()
-          };
-          setTodoLists(prev => [newList, ...prev]);
-      }
+      if (user) await addTodoList(user.uid, title, color);
+      else setTodoLists(prev => [{ id: Date.now().toString(), title, color, items: [], createdAt: Date.now(), updatedAt: Date.now() }, ...prev]);
   };
 
   const handleUpdateTodoList = async (listId: string, data: Partial<TodoList>) => {
-      if (user) {
-          await updateTodoList(user.uid, listId, data);
-      } else {
-          setTodoLists(prev => prev.map(list => 
-              list.id === listId ? { ...list, ...data, updatedAt: Date.now() } : list
-          ));
-      }
+      if (user) await updateTodoList(user.uid, listId, data);
+      else setTodoLists(prev => prev.map(list => list.id === listId ? { ...list, ...data, updatedAt: Date.now() } : list));
   };
 
   const handleDeleteTodoList = async (listId: string) => {
-      if (user) {
-          await deleteTodoList(user.uid, listId);
-      } else {
-          setTodoLists(prev => prev.filter(l => l.id !== listId));
-      }
+      if (user) await deleteTodoList(user.uid, listId);
+      else setTodoLists(prev => prev.filter(l => l.id !== listId));
   };
 
-  // Selection Logic
   const toggleSelection = (id: string) => {
     const newSet = new Set(selectedIds);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
+    if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
     setSelectedIds(newSet);
   };
 
   const handleSelectAll = () => {
-      if (selectedIds.size === counters.length) {
-          setSelectedIds(new Set());
-      } else {
-          setSelectedIds(new Set(counters.map(c => c.id)));
-      }
+      if (selectedIds.size === counters.length) setSelectedIds(new Set());
+      else setSelectedIds(new Set(counters.map(c => c.id)));
   };
 
-  const handleExitSelectionMode = () => {
-      setIsSelectionMode(false);
-      setSelectedIds(new Set());
-  }
+  const handleExitSelectionMode = () => { setIsSelectionMode(false); setSelectedIds(new Set()); }
 
-  // Bulk Operations
   const handleBulkDelete = async () => {
       if (!user || selectedIds.size === 0) return;
-      
-      if (confirm(`Are you sure you want to delete ${selectedIds.size} counters? This cannot be undone.`)) {
+      if (confirm(`Delete ${selectedIds.size} counters?`)) {
           await bulkDeleteCounters(user.uid, Array.from(selectedIds));
           handleExitSelectionMode();
       }
   };
 
-
-  // Render Active Counter Mode
   if (activeCounterId) {
     const counter = counters.find(c => c.id === activeCounterId);
     if (counter) {
@@ -634,44 +576,36 @@ export default function App() {
               onUpdateTarget={handleUpdateTarget}
               onUpdateGroup={handleUpdateCounterGroup}
               onDelete={handleDeleteCounter}
-              isMonochrome={isMonochrome}
             />
         </div>
       );
     }
   }
 
-  // Render Main Layout
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans transition-colors duration-300">
+    <div className="min-h-screen text-gray-100 flex flex-col font-sans transition-colors duration-300 bg-gray-950">
       
-      {/* Top Header Bar - Fixed */}
-      <header className="fixed top-0 left-0 right-0 z-30 bg-gray-950/80 backdrop-blur-xl border-b border-gray-900 transition-colors duration-300">
+      {/* Top Header Bar */}
+      <header className="fixed top-0 left-0 right-0 z-30 backdrop-blur-xl border-b transition-colors duration-300 bg-gray-950/80 border-gray-800">
           <div className="pt-[env(safe-area-inset-top)] px-4 h-14 flex items-center justify-between">
-              {/* Brand */}
               <div className="flex items-center gap-3">
-                  <div className={clsx(
-                      "w-8 h-8 rounded-xl flex items-center justify-center font-black text-lg shadow-lg rotate-3", 
-                      isMonochrome ? "bg-white text-black" : "bg-gradient-to-br from-indigo-500 to-purple-600 text-white"
-                  )}>
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-lg shadow-lg rotate-3 bg-gray-900 border border-gray-800 text-white">
                       T
                   </div>
-                  <h1 className={clsx("text-lg font-bold tracking-tight", isMonochrome ? "text-white" : "text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400")}>
+                  <h1 className="text-lg font-bold tracking-tight text-white">
                     TallyMaster
                   </h1>
               </div>
 
-              {/* Status / Auth */}
               <div className="flex items-center gap-3">
-                {/* Sync Status */}
                 <div className="flex items-center justify-center w-8 h-8">
                     {user ? (
                         isSyncing ? (
-                            <RefreshCw size={16} className={clsx("animate-spin", isMonochrome ? "text-white" : "text-yellow-500")} />
+                            <RefreshCw size={16} className="animate-spin text-yellow-500" />
                         ) : (
                             <div className="relative">
-                                <Cloud size={18} className={clsx("opacity-40", isMonochrome ? "text-white" : "text-green-500")} />
-                                <Check size={10} className={clsx("absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-bold", isMonochrome ? "text-white" : "text-green-500")} />
+                                <Cloud size={18} className="opacity-40 text-green-500" />
+                                <Check size={10} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-bold text-green-500" />
                             </div>
                         )
                     ) : (
@@ -682,10 +616,7 @@ export default function App() {
                 {!user && isFirebaseConfigured && (
                     <button 
                         onClick={() => setShowAuthModal(true)}
-                        className={clsx(
-                            "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full transition font-semibold border",
-                            isMonochrome ? "bg-white text-black border-transparent" : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20"
-                        )}
+                        className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full transition font-semibold border bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20"
                     >
                         <LogIn size={14} /> 
                         <span>Sign In</span>
@@ -695,24 +626,19 @@ export default function App() {
           </div>
       </header>
 
-      {/* Main Content Area */}
-      {/* Padding Top accounts for header height (~3.5rem + safe area) */}
-      {/* Padding Bottom accounts for bottom nav height (~4rem + safe area) */}
       <main className="flex-1 overflow-y-auto pt-[calc(3.5rem+env(safe-area-inset-top))] pb-[calc(5rem+env(safe-area-inset-bottom))] no-scrollbar scroll-smooth">
         
-        {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <div className="px-4 md:px-6 mt-4">
              {!isFirebaseConfigured && (
                 <div className="bg-yellow-900/10 border border-yellow-700/30 p-3 rounded-xl text-yellow-500 text-xs mb-6 flex items-start gap-2">
                     <CloudOff size={16} className="shrink-0 mt-0.5" />
-                    <span><strong>Demo Mode:</strong> Data is saved locally. Sign in via Settings to sync across devices.</span>
+                    <span><strong>Demo Mode:</strong> Data is saved locally. Sign in via Settings to sync.</span>
                 </div>
             )}
             
-            {/* Toolbar */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                <div className="flex gap-1 bg-gray-900/50 p-1 rounded-xl border border-gray-800/50">
+                <div className="flex gap-1 p-1 rounded-xl border bg-gray-900/50 border-gray-800/50">
                     <button 
                         onClick={() => setViewMode('grid')}
                         className={clsx("p-2 rounded-lg transition-all", viewMode === 'grid' ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-300")}
@@ -728,7 +654,6 @@ export default function App() {
                 </div>
 
                 <div className="flex gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar items-center">
-                    {/* Select Toggle */}
                      {counters.length > 0 && (
                         <button 
                             onClick={() => {
@@ -738,7 +663,7 @@ export default function App() {
                             className={clsx(
                                 "px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0 text-xs font-medium",
                                 isSelectionMode 
-                                    ? (isMonochrome ? "bg-white text-black border-white" : "bg-indigo-600 border-indigo-500 text-white")
+                                    ? "bg-indigo-600 border-indigo-500 text-white"
                                     : "bg-gray-900/50 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-900"
                             )}
                         >
@@ -749,26 +674,21 @@ export default function App() {
                      
                      <div className="h-4 w-px bg-gray-800 mx-1 hidden sm:block"></div>
 
-                     {/* Regular Tools */}
                      {!isSelectionMode && (
                          <>
-                            {/* Groups Manager */}
                             <button 
                                 onClick={() => setShowGroupModal(true)}
-                                className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
-                                    isMonochrome ? "bg-transparent border-gray-800 text-gray-500 hover:bg-gray-900" : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900 hover:text-white"
-                                )}
+                                className="px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0 bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900 hover:text-white"
                             >
                                 <Folder size={14} />
                                 <span className="hidden sm:inline text-xs font-medium">Groups</span>
                             </button>
 
-                            {/* Sorting Options */}
                             <button 
                                 onClick={() => setSortMode('updated')}
                                 className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
                                     sortMode === 'updated' 
-                                        ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
+                                        ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400"
                                         : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
                                 )}
                             >
@@ -779,7 +699,7 @@ export default function App() {
                                 onClick={() => setSortMode('value')}
                                 className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
                                     sortMode === 'value' 
-                                        ? (isMonochrome ? "bg-white/10 border-white text-white" : "bg-indigo-900/20 border-indigo-500/30 text-indigo-400") 
+                                        ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400"
                                         : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
                                 )}
                             >
@@ -800,34 +720,28 @@ export default function App() {
                 </div>
             </div>
 
-            {/* Empty State */}
             {counters.length === 0 && (
                 <div className="text-center py-20 flex flex-col items-center animate-in zoom-in-95 duration-500">
-                    <div className={clsx("w-20 h-20 rounded-full flex items-center justify-center mb-6", isMonochrome ? "bg-white/10 text-white" : "bg-indigo-900/20 text-indigo-400")}>
+                    <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6 bg-gray-900 border border-gray-800 text-white">
                         <Plus size={32} />
                     </div>
                     <h3 className="text-xl font-bold text-white mb-2">No counters yet</h3>
                     <p className="text-gray-500 mb-8 max-w-xs">Start tracking habits, scores, or inventory by creating your first counter.</p>
                     <button 
                         onClick={() => setShowAddModal(true)}
-                        className={clsx(
-                            "px-6 py-3 rounded-xl font-bold shadow-lg transition transform hover:scale-105",
-                            isMonochrome ? "bg-white text-black" : "bg-indigo-600 text-white shadow-indigo-900/20"
-                        )}
+                        className="px-6 py-3 rounded-xl font-bold shadow-lg transition transform hover:scale-105 bg-gray-800 border border-gray-700 text-white"
                     >
                         Create Counter
                     </button>
                 </div>
             )}
 
-            {/* Grouped Counters */}
             <div className="space-y-10">
                 {groupedCounters.map(section => (
                     <div key={section.id} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {/* Section Header */}
                         {(groups.length > 0 || section.id !== 'ungrouped') && (
                             <div className="flex items-center gap-4 mb-4">
-                                <h3 className={clsx("text-sm font-bold uppercase tracking-wider", isMonochrome ? "text-white" : "text-gray-400")}>
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">
                                     {section.name}
                                 </h3>
                                 <div className="h-px bg-gray-800 flex-1"></div>
@@ -845,7 +759,6 @@ export default function App() {
                                     counter={counter} 
                                     viewMode={viewMode}
                                     onClick={() => setActiveCounterId(counter.id)} 
-                                    isMonochrome={isMonochrome}
                                     selectionMode={isSelectionMode}
                                     isSelected={selectedIds.has(counter.id)}
                                     onToggleSelection={() => toggleSelection(counter.id)}
@@ -860,10 +773,7 @@ export default function App() {
                                         viewMode === 'grid' ? "p-5 min-h-[160px]" : "p-4 min-h-[80px]"
                                     )}
                                 >
-                                    <div className={clsx(
-                                        "w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center transition-colors text-gray-500",
-                                        isMonochrome ? "group-hover:bg-white group-hover:text-black" : "group-hover:bg-indigo-600 group-hover:text-white"
-                                    )}>
+                                    <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center transition-colors text-gray-500 group-hover:bg-indigo-600 group-hover:text-white">
                                         <Plus size={16} />
                                     </div>
                                     {viewMode === 'grid' && <span className="text-sm text-gray-500 group-hover:text-gray-300">New Counter</span>}
@@ -874,13 +784,10 @@ export default function App() {
                 ))}
             </div>
 
-             {/* Global Add Button for Grouped Layouts */}
              {counters.length > 0 && groups.length > 0 && (
                  <button 
                     onClick={() => setShowAddModal(true)}
-                    className={clsx(
-                        "mt-8 w-full py-4 rounded-xl border border-dashed border-gray-700 text-gray-400 hover:text-white hover:bg-gray-900 hover:border-gray-500 transition flex items-center justify-center gap-2"
-                    )}
+                    className="mt-8 w-full py-4 rounded-xl border border-dashed border-gray-700 text-gray-400 hover:text-white hover:bg-gray-900 hover:border-gray-500 transition flex items-center justify-center gap-2"
                  >
                      <Plus size={20} />
                      <span>Create New Counter</span>
@@ -889,39 +796,33 @@ export default function App() {
           </div>
         )}
 
-        {/* Todos Tab */}
         {activeTab === 'todos' && (
             <TodoManager 
                 lists={todoLists}
                 onAddList={handleAddTodoList}
                 onUpdateList={handleUpdateTodoList}
                 onDeleteList={handleDeleteTodoList}
-                isMonochrome={isMonochrome}
             />
         )}
 
-        {/* Analytics Tab */}
         {activeTab === 'analytics' && (
           <div className="px-4 md:px-6 space-y-6 mt-4">
-             <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 transition-colors duration-300">
-                <CalendarStats logs={logs} counters={counters} isMonochrome={isMonochrome} />
+             <div className="p-6 rounded-2xl border transition-colors duration-300 bg-gray-900 border-gray-800">
+                <CalendarStats logs={logs} counters={counters} />
              </div>
           </div>
         )}
 
-        {/* Settings Tab */}
         {activeTab === 'settings' && (
           <Settings 
             user={user} 
             onClose={() => {}}
-            currentTheme={theme}
-            onThemeChange={setTheme}
-            isMonochrome={isMonochrome}
+            settings={themeSettings}
+            onSettingsChange={handleThemeChange}
           />
         )}
       </main>
 
-      {/* Floating Bulk Action Bar */}
       {isSelectionMode && selectedIds.size > 0 && (
           <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-full px-6 py-3 shadow-2xl z-50 flex items-center gap-4 animate-in slide-in-from-bottom-6">
               <span className="text-sm font-bold text-white mr-2">{selectedIds.size} Selected</span>
@@ -937,18 +838,16 @@ export default function App() {
           </div>
       )}
 
-      {/* Auth Modal */}
       {showAuthModal && (
         <AuthModal onClose={() => setShowAuthModal(false)} />
       )}
       
-      {/* Group Manager Modal */}
       {showGroupModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in p-4">
             <div className="bg-gray-900 w-full max-w-sm p-6 rounded-2xl border border-gray-800 shadow-2xl relative">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <Folder className={isMonochrome ? "text-white" : "text-indigo-400"} size={24} />
+                        <Folder className="text-indigo-400" size={24} />
                         Manage Groups
                     </h3>
                     <button onClick={() => setShowGroupModal(false)} className="text-gray-500 hover:text-white"><X size={20} /></button>
@@ -987,10 +886,7 @@ export default function App() {
                      <button 
                         onClick={handleAddGroup}
                         disabled={!newGroupName.trim()}
-                        className={clsx(
-                            "px-4 rounded-xl font-bold transition disabled:opacity-50 disabled:cursor-not-allowed",
-                            isMonochrome ? "bg-white text-black" : "bg-indigo-600 text-white hover:bg-indigo-500"
-                        )}
+                        className="px-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
                      >
                         <Plus size={20} />
                      </button>
@@ -999,30 +895,24 @@ export default function App() {
         </div>
       )}
 
-      {/* Add Counter Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in p-4 sm:p-0">
             <div className="bg-gray-900 w-full sm:w-96 p-6 rounded-2xl border border-gray-800 shadow-2xl overflow-y-auto max-h-[90vh]">
                 <h3 className="text-xl font-bold text-white mb-6">Create Counter</h3>
                 
-                {/* Name Input */}
                 <div className="mb-6">
                     <label className="block text-gray-500 text-xs font-bold uppercase tracking-wider mb-2">Name</label>
                     <input 
                         autoFocus
                         type="text" 
                         placeholder="e.g., Pushups, Coffees..." 
-                        className={clsx(
-                            "w-full bg-gray-950 border rounded-xl p-3 text-white placeholder-gray-600 focus:outline-none transition-colors",
-                            isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-800 focus:border-indigo-500"
-                        )}
+                        className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white placeholder-gray-600 focus:border-indigo-500 focus:outline-none transition-colors"
                         value={newCounterTitle}
                         onChange={(e) => setNewCounterTitle(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleCreateCounter()}
                     />
                 </div>
 
-                {/* Group Selector */}
                 {groups.length > 0 && (
                     <div className="mb-6">
                         <label className="block text-gray-500 text-xs font-bold uppercase tracking-wider mb-2">Group</label>
@@ -1031,10 +921,7 @@ export default function App() {
                              <select
                                 value={newCounterGroupId}
                                 onChange={(e) => setNewCounterGroupId(e.target.value)}
-                                className={clsx(
-                                    "w-full bg-gray-950 border rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none appearance-none transition-colors",
-                                    isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-700 focus:border-indigo-500"
-                                )}
+                                className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-indigo-500 appearance-none transition-colors"
                              >
                                  <option value="">Ungrouped</option>
                                  {groups.map(g => (
@@ -1045,7 +932,6 @@ export default function App() {
                     </div>
                 )}
 
-                {/* Color Picker */}
                 <div className="mb-6">
                     <label className="block text-gray-500 text-xs font-bold uppercase tracking-wider mb-3">Color</label>
                     <div className="flex flex-wrap gap-3">
@@ -1066,7 +952,6 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* Daily Reset Toggle */}
                  <div className="mb-4 bg-gray-950 p-4 rounded-xl border border-gray-800">
                     <div className="flex items-center justify-between">
                          <label className="flex items-center gap-3 text-white font-medium cursor-pointer select-none w-full">
@@ -1074,14 +959,11 @@ export default function App() {
                                 type="checkbox"
                                 checked={resetDaily}
                                 onChange={(e) => setResetDaily(e.target.checked)}
-                                className={clsx(
-                                    "w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-offset-gray-900",
-                                    isMonochrome ? "text-white focus:ring-white" : "text-indigo-600 focus:ring-indigo-500"
-                                )} 
+                                className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-gray-900" 
                             />
                             <div className="flex flex-col">
-                                <span className={clsx("flex items-center gap-2 text-sm")}>
-                                    <RotateCcw size={14} className={isMonochrome ? "text-white" : "text-indigo-400"} />
+                                <span className="flex items-center gap-2 text-sm">
+                                    <RotateCcw size={14} className="text-indigo-400" />
                                     Daily Reset
                                 </span>
                                 <span className="text-[10px] text-gray-500">Automatically set count to 0 at midnight</span>
@@ -1090,7 +972,6 @@ export default function App() {
                     </div>
                  </div>
 
-                {/* Target Toggle */}
                 <div className="mb-6 bg-gray-950 p-4 rounded-xl border border-gray-800">
                     <div className="flex items-center justify-between mb-2">
                         <label className="flex items-center gap-2 text-white font-medium cursor-pointer select-none">
@@ -1098,13 +979,10 @@ export default function App() {
                                 type="checkbox"
                                 checked={hasTarget}
                                 onChange={(e) => setHasTarget(e.target.checked)}
-                                className={clsx(
-                                    "w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-offset-gray-900",
-                                    isMonochrome ? "text-white focus:ring-white" : "text-indigo-600 focus:ring-indigo-500"
-                                )} 
+                                className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-gray-900" 
                             />
                             <span className="flex items-center gap-2 text-sm">
-                                <Target size={14} className={isMonochrome ? "text-white" : "text-indigo-400"} />
+                                <Target size={14} className="text-indigo-400" />
                                 Enable Target
                             </span>
                         </label>
@@ -1115,10 +993,7 @@ export default function App() {
                              <input 
                                 type="number" 
                                 placeholder="Target value (e.g. 100)" 
-                                className={clsx(
-                                    "w-full bg-gray-900 border rounded-lg p-2 text-white text-sm placeholder-gray-600 focus:outline-none",
-                                    isMonochrome ? "border-gray-700 focus:border-white" : "border-gray-700 focus:border-indigo-500"
-                                )}
+                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-white text-sm placeholder-gray-600 focus:border-indigo-500 focus:outline-none"
                                 value={targetValue}
                                 onChange={(e) => setTargetValue(e.target.value)}
                             />
@@ -1136,10 +1011,7 @@ export default function App() {
                     <button 
                         onClick={handleCreateCounter}
                         disabled={!newCounterTitle.trim()}
-                        className={clsx(
-                            "flex-1 py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors",
-                            isMonochrome ? "bg-white text-black hover:bg-gray-200" : "bg-indigo-600 hover:bg-indigo-500"
-                        )}
+                        className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         Create
                     </button>
@@ -1148,22 +1020,21 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom Tab Navigator */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-gray-950/90 backdrop-blur-lg border-t border-gray-900 transition-colors duration-300 pb-[env(safe-area-inset-bottom)]">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 backdrop-blur-lg border-t transition-colors duration-300 pb-[env(safe-area-inset-bottom)] bg-gray-950/90 border-gray-900">
           <div className="flex justify-around items-center h-16">
-             <button onClick={() => setActiveTab('dashboard')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'dashboard' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-500 hover:text-gray-300")}>
+             <button onClick={() => setActiveTab('dashboard')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'dashboard' ? "text-indigo-400" : "text-gray-500 hover:text-gray-300")}>
                 <LayoutDashboard size={24} strokeWidth={activeTab === 'dashboard' ? 2.5 : 2} />
                 <span className="text-[10px] font-medium">Counters</span>
              </button>
-             <button onClick={() => setActiveTab('todos')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'todos' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-500 hover:text-gray-300")}>
+             <button onClick={() => setActiveTab('todos')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'todos' ? "text-indigo-400" : "text-gray-500 hover:text-gray-300")}>
                 <CheckSquare2 size={24} strokeWidth={activeTab === 'todos' ? 2.5 : 2} />
                 <span className="text-[10px] font-medium">Tasks</span>
              </button>
-             <button onClick={() => setActiveTab('analytics')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'analytics' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-500 hover:text-gray-300")}>
+             <button onClick={() => setActiveTab('analytics')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'analytics' ? "text-indigo-400" : "text-gray-500 hover:text-gray-300")}>
                 <HistoryIcon size={24} strokeWidth={activeTab === 'analytics' ? 2.5 : 2} />
                 <span className="text-[10px] font-medium">Stats</span>
              </button>
-             <button onClick={() => setActiveTab('settings')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'settings' ? (isMonochrome ? "text-white" : "text-indigo-400") : "text-gray-500 hover:text-gray-300")}>
+             <button onClick={() => setActiveTab('settings')} className={clsx("flex flex-col items-center justify-center w-full h-full gap-1 transition-colors", activeTab === 'settings' ? "text-indigo-400" : "text-gray-500 hover:text-gray-300")}>
                 <SettingsIcon size={24} strokeWidth={activeTab === 'settings' ? 2.5 : 2} />
                 <span className="text-[10px] font-medium">Settings</span>
              </button>
