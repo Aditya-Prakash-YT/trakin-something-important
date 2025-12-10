@@ -390,61 +390,92 @@ export const updateCounterValue = async (userId: string, counterId: string, delt
 
 export const getHistoryLogs = async (userId: string, daysBack: number = 365): Promise<CounterLog[]> => {
   if (!secondaryDb) return [];
+
+  const CACHE_KEY = `tm_logs_cache_${userId}`;
+  const now = Date.now();
+  const cutoff = now - (daysBack * 24 * 60 * 60 * 1000);
   
-  const startDate = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
+  // 1. Load Cache
+  let cachedLogs: CounterLog[] = [];
+  let lastFetch = cutoff;
   
+  try {
+      const stored = localStorage.getItem(CACHE_KEY);
+      if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed.logs)) {
+              cachedLogs = parsed.logs;
+              lastFetch = parsed.lastFetch || cutoff;
+          }
+      }
+  } catch (e) {
+      console.warn("Failed to load logs cache", e);
+  }
+
+  // Ensure we don't query further back than we need if cache is empty or old
+  const queryStart = Math.max(lastFetch, cutoff);
+
+  // 2. Fetch New Logs
+  // We add 1ms to avoid fetching the last log again if timestamps match exactly, 
+  // though typically > comparison is enough.
   const q = query(
     collection(secondaryDb, "users", userId, "logs"),
-    where("timestamp", ">=", startDate),
+    where("timestamp", ">", queryStart),
     orderBy("timestamp", "asc")
   );
   
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CounterLog));
-};
+  const newLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CounterLog));
 
-export const checkDailyResets = async (userId: string) => {
-  if (!secondaryDb) return;
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const storageKey = `daily_reset_checked_${userId}`;
+  // 3. Merge & Deduplicate
+  // Use a Map to deduplicate by ID in case of overlap
+  const logsMap = new Map<string, CounterLog>();
   
-  // Optimization: Check if we already ran the check today on this device
-  const lastCheck = localStorage.getItem(storageKey);
-  if (lastCheck === todayStr) {
-      return;
-  }
-  
-  // Optimization: Only query counters that actually have resetDaily enabled
-  const q = query(
-      collection(secondaryDb, "users", userId, "counters"),
-      where("resetDaily", "==", true)
-  );
-  
-  const snapshot = await getDocs(q);
-
-  const batch = writeBatch(secondaryDb);
-  let hasUpdates = false;
-
-  snapshot.forEach((docSnap) => {
-    const counter = docSnap.data() as Counter;
-    if (counter.lastResetDate !== todayStr) {
-      const ref = doc(secondaryDb!, "users", userId, "counters", docSnap.id);
-      batch.update(ref, {
-        count: 0,
-        lastResetDate: todayStr,
-        lastUpdated: Date.now()
-      });
-      hasUpdates = true;
-    }
+  // Fill with cached logs that are still within the time window
+  cachedLogs.forEach(log => {
+      if (log.timestamp >= cutoff) {
+          logsMap.set(log.id, log);
+      }
   });
 
-  if (hasUpdates) {
-    await batch.commit();
+  // Add/Overwrite with new logs
+  newLogs.forEach(log => {
+      logsMap.set(log.id, log);
+  });
+
+  const mergedLogs = Array.from(logsMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+
+  // 4. Save Cache
+  try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+          logs: mergedLogs,
+          lastFetch: now
+      }));
+  } catch (e) {
+      // LocalStorage might be full
+      console.warn("Failed to save logs cache", e);
   }
-  
-  // Mark as checked for today
-  localStorage.setItem(storageKey, todayStr);
+
+  return mergedLogs;
+};
+
+// Optimized reset that uses existing state instead of querying
+export const resetCountersBatch = async (userId: string, counterIds: string[]) => {
+    if (!secondaryDb || counterIds.length === 0) return;
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    const batch = writeBatch(secondaryDb);
+    
+    counterIds.forEach(id => {
+        const ref = doc(secondaryDb!, "users", userId, "counters", id);
+        batch.update(ref, {
+            count: 0,
+            lastResetDate: todayStr,
+            lastUpdated: Date.now()
+        });
+    });
+
+    await batch.commit();
 };
 
 export const subscribeToTodoLists = (

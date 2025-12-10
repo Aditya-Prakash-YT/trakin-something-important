@@ -41,7 +41,7 @@ import {
   isFirebaseReady,
   updateCounterTitle,
   updateCounterTarget,
-  checkDailyResets,
+  resetCountersBatch,
   subscribeToGroups,
   addGroup,
   deleteGroup,
@@ -257,6 +257,9 @@ export default function App() {
   const [activeCounterId, setActiveCounterId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   
+  // Banner State
+  const [showLocalBanner, setShowLocalBanner] = useState(true);
+
   // Lazy Loading States
   const [hasVisitedAnalytics, setHasVisitedAnalytics] = useState(false);
   const [hasVisitedTodos, setHasVisitedTodos] = useState(false);
@@ -294,6 +297,21 @@ export default function App() {
   // Sorting & View
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [sortMode, setSortMode] = useState<SortMode>('updated');
+
+  // References for Debounce Logic
+  const countersRef = useRef(counters);
+  useEffect(() => { countersRef.current = counters; }, [counters]);
+
+  const pendingDeltas = useRef<Record<string, number>>({});
+  const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Auto-hide local banner after 7 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+        setShowLocalBanner(false);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Handle Theme Update
   const handleThemeChange = (newSettings: Partial<ThemeSettings>) => {
@@ -414,9 +432,6 @@ export default function App() {
         localStorage.setItem('app_theme_settings', JSON.stringify(settings));
     });
 
-    // One-time daily reset check (Optimized internally)
-    checkDailyResets(user.uid);
-      
     return () => {
       unsubCounters();
       unsubGroups();
@@ -424,7 +439,27 @@ export default function App() {
     };
   }, [user]); 
 
-  // 3. Lazy Load Subscriptions (Todos)
+  // 3. Daily Reset Logic (Optimized Client-Side Check)
+  useEffect(() => {
+    if (!user || !isFirebaseReady() || counters.length === 0) return;
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    const checkedKey = `last_reset_check_${user.uid}`;
+    const lastChecked = localStorage.getItem(checkedKey);
+    
+    // Only proceed if we haven't checked today
+    if (lastChecked === todayStr) return;
+
+    const toReset = counters.filter(c => c.resetDaily && c.lastResetDate !== todayStr);
+    
+    if (toReset.length > 0) {
+        resetCountersBatch(user.uid, toReset.map(c => c.id));
+    }
+    
+    localStorage.setItem(checkedKey, todayStr);
+  }, [counters, user]);
+
+  // 4. Lazy Load Subscriptions (Todos)
   useEffect(() => {
       if (activeTab === 'todos' && !hasVisitedTodos) {
           setHasVisitedTodos(true);
@@ -437,7 +472,7 @@ export default function App() {
       return () => unsubTodos();
   }, [user, hasVisitedTodos]);
 
-  // 4. Lazy Load History (Analytics)
+  // 5. Lazy Load History (Analytics)
   useEffect(() => {
       if (activeTab === 'analytics' && !hasVisitedAnalytics) {
           setHasVisitedAnalytics(true);
@@ -455,7 +490,7 @@ export default function App() {
       // No subscription for history logs, just one-time fetch per session
   }, [user, hasVisitedAnalytics]);
 
-  // 5. Local Storage Sync (Offline backup only)
+  // 6. Local Storage Sync (Offline backup only)
   useEffect(() => {
       if (!user) {
         localStorage.setItem('local_counters', JSON.stringify(counters));
@@ -534,31 +569,36 @@ export default function App() {
   };
 
   const handleUpdateCounter = async (id: string, delta: number) => {
-    if (user && isFirebaseReady()) {
-      const counter = counters.find(c => c.id === id);
-      if(counter) {
-          await updateCounterValue(user.uid, id, delta, counter.count + delta);
-          // Optimization: Optimistically update local logs to avoid fetching history from DB again.
-          // Only necessary if we have already fetched logs or are currently viewing analytics
-          if (hasVisitedAnalytics) {
-              setLogs(prev => [...prev, { 
-                 id: `temp_${Date.now()}`, 
-                 counterId: id, 
-                 timestamp: Date.now(), 
-                 valueChange: delta, 
-                 newValue: counter.count + delta 
-              }]);
-          }
-      }
-    } else {
-      setCounters(prev => prev.map(c => {
+    // 1. Optimistic UI Update
+    setCounters(prev => prev.map(c => {
         if (c.id === id) {
-            const next = c.count + delta;
-            setLogs(prevLogs => [...prevLogs, { id: Date.now().toString(), counterId: id, timestamp: Date.now(), valueChange: delta, newValue: next }]);
-            return { ...c, count: next, lastUpdated: Date.now() };
+            return { ...c, count: c.count + delta, lastUpdated: Date.now() };
         }
         return c;
-      }));
+    }));
+
+    if (user && isFirebaseReady()) {
+        // Debounce Logic for Firebase
+        if (!pendingDeltas.current[id]) pendingDeltas.current[id] = 0;
+        pendingDeltas.current[id] += delta;
+
+        if (debounceTimers.current[id]) clearTimeout(debounceTimers.current[id]);
+
+        debounceTimers.current[id] = setTimeout(async () => {
+            const finalDelta = pendingDeltas.current[id];
+            delete pendingDeltas.current[id];
+            delete debounceTimers.current[id];
+
+            if (finalDelta !== 0) {
+                // Get current value from the latest ref to allow approx logging
+                const currentCounter = countersRef.current.find(c => c.id === id);
+                const baseCount = currentCounter ? currentCounter.count : 0; 
+                await updateCounterValue(user.uid, id, finalDelta, baseCount);
+            }
+        }, 500); // 500ms debounce
+    } else {
+        // Local Mode Logic
+        setLogs(prevLogs => [...prevLogs, { id: Date.now().toString(), counterId: id, timestamp: Date.now(), valueChange: delta, newValue: counters.find(c=>c.id===id)!.count + delta }]);
     }
   };
 
@@ -700,14 +740,16 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto pt-[calc(3.5rem+env(safe-area-inset-top))] pb-[calc(5rem+env(safe-area-inset-bottom))] no-scrollbar scroll-smooth">
         
+        {/* Global Local Mode Banner */}
+        {!user && showLocalBanner && (
+            <div className="mx-4 md:mx-6 mt-4 bg-yellow-900/10 border border-yellow-700/30 p-3 rounded-xl text-yellow-500 text-xs flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
+                <CloudOff size={16} className="shrink-0 mt-0.5" />
+                <span><strong>Local Mode:</strong> Data is saved on this device. Sign in to sync.</span>
+            </div>
+        )}
+
         {activeTab === 'dashboard' && (
           <div className="px-4 md:px-6 mt-4">
-             {!user && (
-                <div className="bg-yellow-900/10 border border-yellow-700/30 p-3 rounded-xl text-yellow-500 text-xs mb-6 flex items-start gap-2">
-                    <CloudOff size={16} className="shrink-0 mt-0.5" />
-                    <span><strong>Local Mode:</strong> Data is saved on this device. Sign in to sync.</span>
-                </div>
-            )}
             
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                 <div className="flex gap-1 p-1 rounded-xl border bg-gray-900/50 border-gray-800/50">
