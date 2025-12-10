@@ -26,7 +26,8 @@ import {
   Trash2,
   CheckCircle2,
   CheckSquare2,
-  FolderPlus
+  FolderPlus,
+  FolderInput
 } from 'lucide-react';
 import { Counter, CounterLog, Tab, ThemeSettings, CounterGroup, TodoList } from './types';
 import { 
@@ -46,6 +47,7 @@ import {
   deleteGroup,
   updateCounterGroup,
   bulkDeleteCounters,
+  bulkUpdateCounterGroup,
   subscribeToTodoLists,
   addTodoList,
   updateTodoList,
@@ -264,6 +266,7 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
+  const [showBulkMoveModal, setShowBulkMoveModal] = useState(false);
   
   const [isSyncing, setIsSyncing] = useState(false);
   
@@ -617,6 +620,20 @@ export default function App() {
       }
   };
 
+  const handleBulkMove = async (targetGroupId: string | null) => {
+    if (user && isFirebaseReady()) {
+        await bulkUpdateCounterGroup(user.uid, Array.from(selectedIds), targetGroupId);
+    } else {
+        setCounters(prev => prev.map(c => 
+            selectedIds.has(c.id) 
+                ? { ...c, groupId: targetGroupId || undefined } 
+                : c
+        ));
+    }
+    setShowBulkMoveModal(false);
+    handleExitSelectionMode();
+  };
+
   if (activeCounterId) {
     const counter = counters.find(c => c.id === activeCounterId);
     if (counter) {
@@ -776,17 +793,28 @@ export default function App() {
             </div>
 
             {counters.length === 0 && (
-                <div className="text-center py-20 flex flex-col items-center animate-in zoom-in-95 duration-500">
-                    <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6 bg-gray-900 border border-gray-800 text-white">
-                        <Plus size={32} />
+                <div className="flex flex-col items-center justify-center py-20 animate-in zoom-in-95 duration-500 px-6">
+                    <div className="relative mb-8 group">
+                        <div className="absolute inset-0 bg-indigo-500/20 blur-2xl rounded-full group-hover:bg-indigo-500/30 transition-all duration-500"></div>
+                        <div className="relative w-24 h-24 bg-gray-900 border border-gray-800 rounded-3xl flex items-center justify-center shadow-2xl group-hover:scale-105 transition-transform duration-500">
+                            <LayoutGrid size={40} className="text-gray-600 group-hover:text-indigo-400 transition-colors duration-500" />
+                            <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center border-4 border-gray-950">
+                                <Plus size={20} className="text-white" />
+                            </div>
+                        </div>
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">No counters yet</h3>
-                    <p className="text-gray-500 mb-8 max-w-xs">Start tracking habits, scores, or inventory by creating your first counter.</p>
+                    
+                    <h3 className="text-2xl font-bold text-white mb-3 text-center">Start Counting</h3>
+                    <p className="text-gray-400 mb-8 max-w-sm text-center text-sm leading-relaxed">
+                        Track habits, inventory, scores, or anything else. Your counters will appear here.
+                    </p>
+                    
                     <button 
                         onClick={() => setShowAddModal(true)}
-                        className="px-6 py-3 rounded-xl font-bold shadow-lg transition transform hover:scale-105 bg-gray-800 border border-gray-700 text-white"
+                        className="px-8 py-4 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-all hover:-translate-y-1 flex items-center gap-2"
                     >
-                        Create Counter
+                        <Plus size={20} />
+                        Create First Counter
                     </button>
                 </div>
             )}
@@ -889,6 +917,16 @@ export default function App() {
           <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-full px-6 py-3 shadow-2xl z-50 flex items-center gap-4 animate-in slide-in-from-bottom-6">
               <span className="text-sm font-bold text-white mr-2">{selectedIds.size} Selected</span>
               <div className="h-6 w-px bg-gray-700"></div>
+
+              <button 
+                 onClick={() => setShowBulkMoveModal(true)}
+                 className="flex flex-col items-center gap-1 text-indigo-400 hover:text-indigo-300 transition group"
+              >
+                  <FolderInput size={20} className="group-hover:scale-110 transition-transform" />
+                  <span className="text-[10px] font-medium">Move</span>
+              </button>
+              
+              <div className="h-6 w-px bg-gray-700"></div>
               
               <button 
                  onClick={handleBulkDelete}
@@ -898,6 +936,50 @@ export default function App() {
                   <span className="text-[10px] font-medium">Delete</span>
               </button>
           </div>
+      )}
+
+      {showBulkMoveModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in p-4" onClick={() => setShowBulkMoveModal(false)}>
+            <div className="bg-gray-900 w-full max-w-sm p-6 rounded-2xl border border-gray-800 shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <FolderInput className="text-indigo-400" size={24} />
+                    Move to Group
+                </h3>
+                <p className="text-sm text-gray-400 mb-6">Select a destination for {selectedIds.size} counters.</p>
+
+                <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 no-scrollbar">
+                    <button
+                        onClick={() => handleBulkMove(null)}
+                        className="w-full text-left p-3 rounded-xl border border-dashed border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800 transition flex items-center gap-3"
+                    >
+                        <Folder className="opacity-50" size={18} />
+                        <span>Ungrouped</span>
+                    </button>
+                    
+                    {groups.map(g => (
+                        <button
+                            key={g.id}
+                            onClick={() => handleBulkMove(g.id)}
+                            className="w-full text-left p-3 rounded-xl border border-gray-800 bg-gray-800/50 text-gray-200 hover:text-white hover:bg-gray-800 transition flex items-center gap-3"
+                        >
+                            <Folder className="text-indigo-400" size={18} />
+                            <span>{g.name}</span>
+                        </button>
+                    ))}
+                    
+                    {groups.length === 0 && (
+                         <div className="text-center text-xs text-gray-500 py-4">No groups created yet.</div>
+                    )}
+                </div>
+                
+                <button 
+                    onClick={() => setShowBulkMoveModal(false)}
+                    className="w-full mt-4 py-3 bg-gray-800 text-gray-400 hover:text-white rounded-xl font-bold transition"
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
       )}
 
       {showAuthModal && (

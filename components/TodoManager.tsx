@@ -20,7 +20,8 @@ import {
   Search,
   ListFilter,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  CheckSquare2
 } from 'lucide-react';
 import clsx from 'clsx';
 import { playClick } from '../services/sound';
@@ -616,9 +617,14 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
         {/* List Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2 pb-32">
             {visibleItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-gray-500 gap-4">
-                    <CheckCircle2 size={48} className="opacity-20" />
-                    <p>No tasks yet. Add one below!</p>
+                <div className="flex flex-col items-center justify-center py-24 text-gray-500 gap-6 animate-in fade-in slide-in-from-bottom-4">
+                    <div className="w-20 h-20 bg-gray-900/50 rounded-full flex items-center justify-center border border-gray-800">
+                        <CheckCircle2 size={32} className="opacity-20" />
+                    </div>
+                    <div className="text-center space-y-1">
+                        <p className="text-gray-300 font-medium">All caught up!</p>
+                        <p className="text-xs text-gray-600">Add a new task below to get started.</p>
+                    </div>
                 </div>
             ) : (
                 visibleItems.map(node => (
@@ -805,17 +811,28 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
         </div>
 
         {lists.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[50vh] animate-in zoom-in-95 duration-500">
+            <div className="flex flex-col items-center justify-center py-20 animate-in zoom-in-95 duration-500 px-6">
+                <div className="relative mb-8 group cursor-pointer" onClick={() => setShowAddModal(true)}>
+                    <div className="absolute inset-0 bg-emerald-500/20 blur-2xl rounded-full group-hover:bg-emerald-500/30 transition-all duration-500"></div>
+                    <div className="relative w-24 h-24 bg-gray-900 border border-gray-800 rounded-3xl flex items-center justify-center shadow-2xl group-hover:scale-105 transition-transform duration-500">
+                        <CheckSquare2 size={40} className="text-gray-600 group-hover:text-emerald-400 transition-colors duration-500" />
+                        <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center border-4 border-gray-950">
+                            <Plus size={20} className="text-white" />
+                        </div>
+                    </div>
+                </div>
+                
+                <h3 className="text-2xl font-bold text-white mb-3 text-center">No Task Lists</h3>
+                <p className="text-gray-400 mb-8 max-w-sm text-center text-sm leading-relaxed">
+                    Organize your tasks by creating focused lists for work, personal, or shopping.
+                </p>
+                
                 <button 
                     onClick={() => setShowAddModal(true)}
-                    className={clsx(
-                        "w-full max-w-sm h-64 p-8 border border-dashed border-gray-800 rounded-3xl flex flex-col items-center justify-center gap-4 text-gray-500 hover:text-white hover:bg-gray-900 hover:border-gray-600 transition group"
-                    )}
+                    className="px-8 py-4 rounded-xl font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all hover:-translate-y-1 flex items-center gap-2"
                 >
-                    <div className={clsx("w-16 h-16 rounded-full flex items-center justify-center transition-colors bg-indigo-900/20 group-hover:bg-indigo-600 group-hover:text-white")}>
-                        <Plus size={32} />
-                    </div>
-                    <span className="font-bold text-lg">Create List</span>
+                    <Plus size={20} />
+                    Create New List
                 </button>
             </div>
         ) : filteredLists.length === 0 ? (

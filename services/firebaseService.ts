@@ -352,6 +352,20 @@ export const bulkDeleteCounters = async (userId: string, counterIds: string[]) =
   await batch.commit();
 }
 
+export const bulkUpdateCounterGroup = async (userId: string, counterIds: string[], groupId: string | null) => {
+  if (!secondaryDb) throw new Error("No DB");
+  const batch = writeBatch(secondaryDb);
+  counterIds.forEach(id => {
+      const ref = doc(secondaryDb, "users", userId, "counters", id);
+      if (groupId === null) {
+          batch.update(ref, { groupId: deleteField() });
+      } else {
+          batch.update(ref, { groupId });
+      }
+  });
+  await batch.commit();
+}
+
 export const updateCounterValue = async (userId: string, counterId: string, delta: number, newValue: number) => {
   if (!secondaryDb) throw new Error("No DB");
 
