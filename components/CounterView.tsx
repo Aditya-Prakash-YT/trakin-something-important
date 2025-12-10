@@ -56,7 +56,7 @@ export const CounterView: React.FC<CounterViewProps> = ({
   // Edit State
   const [editTitle, setEditTitle] = useState(counter.title);
   const [editTarget, setEditTarget] = useState<string>(counter.target?.toString() || "");
-  const [editCount, setEditCount] = useState<string>(counter.count.toString()); // New: Manual count edit
+  const [editCount, setEditCount] = useState<string>(counter.count.toString());
   const [isTargetEnabled, setIsTargetEnabled] = useState(!!counter.target);
   const [editGroupId, setEditGroupId] = useState<string>(counter.groupId || "");
 
@@ -98,12 +98,11 @@ export const CounterView: React.FC<CounterViewProps> = ({
   // Keyboard Shortcuts
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
-          // Don't trigger if modal is open or typing in input
           if (showMenu || showDeleteConfirm || isEditingTarget) return;
           if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) return;
 
           if (e.code === 'Space' || e.key === 'Enter' || e.code === 'ArrowUp') {
-              e.preventDefault(); // Prevent scroll
+              e.preventDefault(); 
               handleUpdate(1);
           } else if (e.code === 'ArrowDown' || e.code === 'Backspace') {
               handleUpdate(-1);
@@ -224,11 +223,34 @@ export const CounterView: React.FC<CounterViewProps> = ({
       {/* Background glow */}
       <div 
         className={clsx(
-          "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-[120px] pointer-events-none transition-all duration-500 z-0",
-          isTargetReached ? "opacity-40" : "opacity-20"
+          "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-[500px] max-h-[500px] rounded-full blur-[100px] pointer-events-none transition-all duration-500 z-0",
+          isTargetReached ? "opacity-30" : "opacity-15"
         )}
         style={{ backgroundColor: isTargetReached ? targetReachedColor : displayColor }}
       />
+
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 z-50 p-6 pt-[calc(1.5rem+env(safe-area-inset-top))] flex items-start justify-between pointer-events-none">
+        <button 
+            onClick={onBack} 
+            className="pointer-events-auto p-3 rounded-full bg-gray-900/40 border border-gray-800 text-gray-400 hover:text-white transition backdrop-blur-md hover:bg-gray-800/60"
+        >
+           <ArrowLeft size={24} />
+        </button>
+        
+        <div className="pointer-events-auto bg-gray-900/60 border border-gray-800/50 backdrop-blur-md px-5 py-2 rounded-full font-mono text-sm font-bold text-gray-200 shadow-lg flex items-center gap-2">
+            <span>{localCount}</span>
+            <span className="text-gray-600">/</span>
+            <span>{counter.target || '∞'}</span>
+        </div>
+
+        <button 
+            onClick={() => setShowMenu(true)} 
+            className="pointer-events-auto p-3 rounded-full bg-gray-900/40 border border-gray-800 text-gray-400 hover:text-white transition backdrop-blur-md hover:bg-gray-800/60"
+        >
+           <Settings2 size={24} />
+        </button>
+      </div>
 
       {/* Main Clickable Area */}
       <div 
@@ -237,125 +259,98 @@ export const CounterView: React.FC<CounterViewProps> = ({
       >
         {ripples.map(r => <Ripple key={r.id} x={r.x} y={r.y} />)}
         
-        {/* Header - Positioned absolutely to sit on top of click area */}
-        <div className="absolute top-0 w-full p-4 flex justify-between items-center z-30 pt-[calc(1rem+env(safe-area-inset-top))]" onClick={e => e.stopPropagation()}>
-            <button 
-            onClick={onBack}
-            className="p-3 bg-gray-800/50 backdrop-blur-md rounded-full text-white hover:bg-gray-700/50 transition border border-gray-700/50"
-            >
-            <ArrowLeft size={20} />
-            </button>
-            <div className={clsx(
-                "backdrop-blur-md px-4 py-1.5 rounded-full text-xs font-bold transition-colors shadow-lg",
-                isTargetReached 
-                ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                : "bg-gray-800/50 text-gray-300 border border-gray-700/50"
-            )}>
-                {counter.target ? `${localCount} / ${counter.target}` : 'No Limit'}
-            </div>
-            <button 
-            onClick={() => setShowMenu(true)}
-            className="p-3 bg-gray-800/50 backdrop-blur-md rounded-full text-white hover:bg-gray-700/50 transition border border-gray-700/50"
-            >
-            <Settings2 size={20} />
-            </button>
-        </div>
-
-        {/* Counter Display */}
-        <h2 className="text-gray-400 text-lg font-medium tracking-wide uppercase mb-4 opacity-80 pointer-events-none">{counter.title}</h2>
-        <div 
-          className={clsx(
-            "text-9xl font-black tabular-nums transition-all duration-300 select-none pointer-events-none",
-            isAnimating === 'up' && "scale-110",
-            isAnimating === 'down' && "scale-90",
-            isTargetReached && "animate-pulse drop-shadow-[0_0_40px_rgba(74,222,128,0.5)]"
-          )}
-          style={{ color: isTargetReached ? targetReachedColor : displayColor }}
-        >
-          {localCount}
-        </div>
-        
-        {/* Keyboard Hint (Desktop only) */}
-        <div className="absolute bottom-8 text-gray-600 text-[10px] hidden sm:flex items-center gap-2 opacity-50">
-            <Keyboard size={12} />
-            <span>Press Space to Count</span>
-        </div>
-
-        {/* Target Progress Section */}
-        {counter.target && (
-            <div className="absolute bottom-32 w-full max-w-xs px-6 flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 pointer-events-none">
-                <div className="flex justify-between w-full text-xs text-gray-500 mb-2 font-medium">
-                    <span className={isTargetReached ? "text-green-400" : ""}>
-                        {isTargetReached ? 'Goal Reached!' : 'Progress'}
-                    </span>
-                    <span className={isTargetReached ? "text-green-400" : ""}>{Math.round(calculateProgress())}%</span>
-                </div>
-                <div className={clsx(
-                    "h-3 w-full bg-gray-900/80 rounded-full overflow-hidden border transition-colors duration-300",
-                    isTargetReached 
-                        ? "border-green-500/50 shadow-[0_0_15px_rgba(74,222,128,0.3)]"
-                        : "border-gray-800/50"
-                )}>
-                    <div 
-                        className="h-full transition-all duration-500 ease-out relative"
-                        style={{ 
-                            width: `${calculateProgress()}%`, 
-                            backgroundColor: isTargetReached ? targetReachedColor : displayColor 
-                        }}
-                    >
-                        {/* Shimmer effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] animate-[shimmer_2s_infinite]"></div>
+        {/* Central Stats Group */}
+        <div className="w-full max-w-xs flex flex-col items-center -mt-24 pointer-events-none">
+            
+            {/* Progress Section */}
+            {counter.target && (
+                <div className="w-full mb-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">
+                        <span>Progress</span>
+                        <span>{Math.round(calculateProgress())}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-gray-800/50 rounded-full overflow-hidden">
+                        <div 
+                            className="h-full transition-all duration-500 ease-out relative"
+                             style={{ 
+                                width: `${calculateProgress()}%`, 
+                                backgroundColor: isTargetReached ? targetReachedColor : displayColor 
+                            }}
+                        >
+                            {/* Shimmer */}
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] animate-[shimmer_2s_infinite]"></div>
+                        </div>
                     </div>
                 </div>
+            )}
 
-                {/* Inline Target Controls (Interactive children must stop prop) */}
-                <div className="mt-6 flex items-center justify-center pointer-events-auto" onClick={e => e.stopPropagation()}>
-                    {isEditingTarget ? (
-                       <div className="flex items-center gap-2 bg-gray-900/90 rounded-xl p-1.5 border border-gray-700 backdrop-blur-md shadow-2xl animate-in zoom-in-95 duration-200">
-                           <button onClick={() => adjustQuickTarget(-1)} className="p-2 hover:bg-white/10 rounded-lg text-white active:scale-95 transition-transform"><Minus size={16}/></button>
+            {/* Main Number */}
+            <div 
+                className={clsx(
+                    "text-[8rem] sm:text-[10rem] leading-none font-black tracking-tighter tabular-nums transition-all duration-200 select-none",
+                    isAnimating === 'up' && "scale-110",
+                    isAnimating === 'down' && "scale-90",
+                    isTargetReached && "animate-pulse drop-shadow-[0_0_30px_rgba(74,222,128,0.4)]"
+                )}
+                style={{ 
+                    color: isTargetReached ? targetReachedColor : displayColor, 
+                    textShadow: `0 0 60px ${displayColor}30` 
+                }}
+            >
+                {localCount}
+            </div>
+
+            {/* Goal Pill */}
+            <div className="pointer-events-auto mt-6">
+                 {isEditingTarget ? (
+                       <div className="flex items-center gap-2 bg-gray-900/90 rounded-full p-1 border border-gray-700 backdrop-blur-md shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                           <button onClick={() => adjustQuickTarget(-1)} className="p-2 hover:bg-white/10 rounded-full text-white active:scale-95 transition-transform"><Minus size={14}/></button>
                            <input 
                                 ref={quickTargetInputRef}
                                 type="number" 
-                                className="bg-transparent text-white font-mono font-bold text-center w-16 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                className="bg-transparent text-white font-mono font-bold text-center w-16 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-sm"
                                 value={quickTarget}
                                 onChange={(e) => setQuickTarget(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && saveQuickTarget()}
                            />
-                           <button onClick={() => adjustQuickTarget(1)} className="p-2 hover:bg-white/10 rounded-lg text-white active:scale-95 transition-transform"><Plus size={16}/></button>
-                           <div className="w-px h-5 bg-gray-700 mx-1"></div>
-                           <button onClick={saveQuickTarget} className="p-2 bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded-lg active:scale-95 transition-transform"><Check size={16}/></button>
+                           <button onClick={() => adjustQuickTarget(1)} className="p-2 hover:bg-white/10 rounded-full text-white active:scale-95 transition-transform"><Plus size={14}/></button>
+                           <button onClick={saveQuickTarget} className="p-2 bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded-full active:scale-95 transition-transform"><Check size={14}/></button>
                        </div>
                     ) : (
-                       <button 
-                          onClick={startQuickEditTarget}
-                          className="group flex items-center gap-2 py-2 px-4 rounded-full bg-gray-900/30 hover:bg-gray-800 border border-transparent hover:border-gray-700 transition-all active:scale-95"
-                       >
-                          <Target size={12} className="text-indigo-400" />
-                          <span className="text-xs text-gray-500 group-hover:text-gray-200 font-medium">Goal: {counter.target}</span>
-                          <Edit2 size={10} className="text-gray-600 group-hover:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                       </button>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); startQuickEditTarget(e); }}
+                            className="bg-gray-900/60 border border-gray-800 backdrop-blur-sm rounded-full px-4 py-1.5 flex items-center gap-2 text-xs font-bold text-gray-500 hover:bg-gray-800 hover:text-white transition group uppercase tracking-wide shadow-lg"
+                        >
+                            <Target size={12} className={clsx(isTargetReached ? "text-green-400" : "text-indigo-500")} />
+                            <span>Goal: {counter.target || 'None'}</span>
+                        </button>
                     )}
-                </div>
             </div>
-        )}
+
+             {/* Hint */}
+             <div className="mt-12 flex items-center gap-2 text-gray-600 text-[10px] font-bold opacity-40 uppercase tracking-widest">
+                <Keyboard size={12} />
+                <span>Press Space to Count</span>
+             </div>
+         </div>
       </div>
 
       {/* Explicit Controls Footer */}
       <div 
-        className="h-48 w-full max-w-md mx-auto grid grid-cols-2 gap-6 px-6 pb-[calc(2rem+env(safe-area-inset-bottom))] relative z-20 pointer-events-none"
+        className="absolute bottom-8 left-0 right-0 px-6 pb-[env(safe-area-inset-bottom)] flex items-end justify-center gap-4 sm:gap-8 z-40 pointer-events-none"
       >
-        {/* Pointer events auto on buttons only, so gaps are clickable for main area if we wanted, but h-48 blocks it. That's fine. */}
         <button 
           onClick={(e) => { e.stopPropagation(); handleUpdate(-1); }}
-          className="pointer-events-auto bg-gray-900/40 hover:bg-gray-900/60 active:bg-gray-800 border border-gray-800/50 hover:border-gray-700 rounded-3xl flex items-center justify-center transition-all duration-200 group backdrop-blur-sm active:scale-95 shadow-lg"
+          className="pointer-events-auto w-24 h-24 sm:w-28 sm:h-28 rounded-[2rem] bg-gray-900/80 border border-gray-800 text-gray-500 hover:text-white hover:bg-gray-800 active:scale-95 transition-all flex items-center justify-center shadow-xl backdrop-blur-sm group"
         >
-          <Minus size={32} className="text-gray-500 group-hover:text-white transition-colors" />
+          <Minus size={32} className="group-hover:scale-110 transition-transform" />
         </button>
         <button 
           onClick={(e) => { e.stopPropagation(); handleUpdate(1); }}
-          className="pointer-events-auto rounded-3xl flex items-center justify-center transition-all duration-200 group active:scale-95 shadow-xl border border-transparent bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/30 hover:shadow-indigo-500/50"
+          className="pointer-events-auto w-32 h-32 sm:w-36 sm:h-36 rounded-[2.5rem] flex items-center justify-center transition-all active:scale-95 shadow-2xl shadow-indigo-500/20 text-white hover:brightness-110"
+          style={{ backgroundColor: displayColor }}
         >
-          <Plus size={40} className="drop-shadow-sm" />
+          <Plus size={48} className="drop-shadow-md" />
         </button>
       </div>
 

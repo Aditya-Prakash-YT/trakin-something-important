@@ -1,4 +1,5 @@
 
+
 export interface CounterGroup {
   id: string;
   name: string;
@@ -30,10 +31,11 @@ export interface CounterLog {
 export interface TodoNode {
   id: string;
   text: string;
-  completed: boolean;
+  status: 'todo' | 'in-progress' | 'done';
   isExpanded: boolean;
   children: TodoNode[];
   priority?: 'high' | 'medium' | 'low';
+  dueDate?: number; // Timestamp
 }
 
 export interface TodoList {
@@ -60,6 +62,11 @@ export interface FirebaseConfig {
   messagingSenderId: string;
   appId: string;
   measurementId?: string;
+}
+
+export interface UserDatabaseConfig {
+  config: FirebaseConfig;
+  updatedAt: number;
 }
 
 export type BaseTheme = 'default' | 'medium-dark' | 'dark' | 'extra-dark' | 'oled';

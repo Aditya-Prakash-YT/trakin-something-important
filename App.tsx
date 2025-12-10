@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   User, 
 } from "firebase/auth";
@@ -254,8 +254,12 @@ export default function App() {
   const [logs, setLogs] = useState<CounterLog[]>([]);
   const [activeCounterId, setActiveCounterId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
-  const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(false);
   
+  // Lazy Loading States
+  const [hasVisitedAnalytics, setHasVisitedAnalytics] = useState(false);
+  const [hasVisitedTodos, setHasVisitedTodos] = useState(false);
+  const [isLogsLoading, setIsLogsLoading] = useState(false);
+
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -293,7 +297,7 @@ export default function App() {
       const nextSettings = { ...themeSettings, ...newSettings };
       setThemeSettings(nextSettings);
       localStorage.setItem('app_theme_settings', JSON.stringify(nextSettings));
-      if (user) {
+      if (user && isFirebaseReady()) {
           updateUserSettings(user.uid, nextSettings);
       }
   };
@@ -324,33 +328,30 @@ export default function App() {
     }
 
     // Apply Component Theme (Card Backgrounds and Borders)
-    // We adjust gray-900 (card bg) and gray-850 (border) relative to the choice
     if (component === 'high-contrast') {
-        // High Contrast: Darker cards, Lighter borders
         if (base === 'oled' || base === 'extra-dark') {
             root.style.setProperty('--c-gray-900', '0 0 0'); 
-            root.style.setProperty('--c-gray-850', '82 82 91'); // Zinc 600
+            root.style.setProperty('--c-gray-850', '82 82 91'); 
         } else {
-             root.style.setProperty('--c-gray-900', '9 9 11'); // Darker than normal
-             root.style.setProperty('--c-gray-850', '75 85 99'); // Gray 600
+             root.style.setProperty('--c-gray-900', '9 9 11'); 
+             root.style.setProperty('--c-gray-850', '75 85 99'); 
         }
     } else {
-        // Default Component Theme
         switch(base) {
             case 'oled':
-                root.style.setProperty('--c-gray-900', '24 24 27'); // Zinc 900 Cards on Black
+                root.style.setProperty('--c-gray-900', '24 24 27'); 
                 root.style.setProperty('--c-gray-850', '39 39 42');
                 break;
             case 'extra-dark':
-                root.style.setProperty('--c-gray-900', '24 24 27'); // Zinc 900
+                root.style.setProperty('--c-gray-900', '24 24 27'); 
                 root.style.setProperty('--c-gray-850', '39 39 42');
                 break;
             case 'dark':
-                 root.style.setProperty('--c-gray-900', '39 39 42'); // Zinc 800
+                 root.style.setProperty('--c-gray-900', '39 39 42'); 
                  root.style.setProperty('--c-gray-850', '63 63 70');
                  break;
             case 'medium-dark':
-                 root.style.setProperty('--c-gray-900', '30 41 59'); // Slate 800
+                 root.style.setProperty('--c-gray-900', '30 41 59'); 
                  root.style.setProperty('--c-gray-850', '51 65 85');
                  break;
             case 'default':
@@ -363,72 +364,107 @@ export default function App() {
 
   }, [themeSettings]);
 
-  // Initialize Firebase
+  // 1. Initialize Firebase & Auth (Run Once)
   useEffect(() => {
-    const configured = initFirebase();
-    setIsFirebaseConfigured(configured);
+    initFirebase();
     
-    if (configured) {
-      const unsubAuth = subscribeToAuth((u) => {
-        setUser(u);
-        if (u) {
-            checkDailyResets(u.uid);
-        }
-      });
-      return () => unsubAuth();
-    } else {
-        const localData = localStorage.getItem('local_counters');
-        if (localData) {
-            const c: Counter[] = JSON.parse(localData);
-            setCounters(c);
-        }
-        const localGroups = localStorage.getItem('local_groups');
-        if (localGroups) {
-            setGroups(JSON.parse(localGroups));
-        }
-        const localTodos = localStorage.getItem('local_todos');
-        if (localTodos) {
-            setTodoLists(JSON.parse(localTodos));
-        }
-    }
+    const unsubAuth = subscribeToAuth((u) => {
+      setUser(u);
+      
+      // If user is null, revert to local storage
+      if (!u) {
+          const localData = localStorage.getItem('local_counters');
+          if (localData) {
+              setCounters(JSON.parse(localData));
+          }
+          const localGroups = localStorage.getItem('local_groups');
+          if (localGroups) {
+              setGroups(JSON.parse(localGroups));
+          }
+          const localTodos = localStorage.getItem('local_todos');
+          if (localTodos) {
+              setTodoLists(JSON.parse(localTodos));
+          }
+      } else {
+        // Reset lazy load states on user switch
+        setHasVisitedAnalytics(false);
+        setHasVisitedTodos(false);
+        setLogs([]);
+        setTodoLists([]);
+      }
+    });
+
+    return () => unsubAuth();
   }, []);
 
+  // 2. Core Data Subscriptions (Counters & Groups)
   useEffect(() => {
-    if (user) {
-      const unsubCounters = subscribeToCounters(user.uid, (data, syncing) => {
-        setCounters(data);
-        setIsSyncing(syncing);
-      });
-      const unsubGroups = subscribeToGroups(user.uid, (data) => {
-        setGroups(data);
-      });
-      const unsubTodos = subscribeToTodoLists(user.uid, (data) => {
-          setTodoLists(data);
-      });
-      const unsubSettings = subscribeToUserSettings(user.uid, (settings) => {
-          setThemeSettings(settings);
-          localStorage.setItem('app_theme_settings', JSON.stringify(settings));
-      });
+    if (!user || !isFirebaseReady()) return;
+
+    const unsubCounters = subscribeToCounters(user.uid, (data, syncing) => {
+      setCounters(data);
+      setIsSyncing(syncing);
+    });
+    const unsubGroups = subscribeToGroups(user.uid, setGroups);
+    const unsubSettings = subscribeToUserSettings(user.uid, (settings) => {
+        setThemeSettings(settings);
+        localStorage.setItem('app_theme_settings', JSON.stringify(settings));
+    });
+
+    // One-time daily reset check (Optimized internally)
+    checkDailyResets(user.uid);
       
-      getHistoryLogs(user.uid).then(setLogs);
+    return () => {
+      unsubCounters();
+      unsubGroups();
+      unsubSettings();
+    };
+  }, [user]); 
+
+  // 3. Lazy Load Subscriptions (Todos)
+  useEffect(() => {
+      if (activeTab === 'todos' && !hasVisitedTodos) {
+          setHasVisitedTodos(true);
+      }
+  }, [activeTab]);
+
+  useEffect(() => {
+      if (!user || !isFirebaseReady() || !hasVisitedTodos) return;
+      const unsubTodos = subscribeToTodoLists(user.uid, setTodoLists);
+      return () => unsubTodos();
+  }, [user, hasVisitedTodos]);
+
+  // 4. Lazy Load History (Analytics)
+  useEffect(() => {
+      if (activeTab === 'analytics' && !hasVisitedAnalytics) {
+          setHasVisitedAnalytics(true);
+      }
+  }, [activeTab]);
+
+  useEffect(() => {
+      if (!user || !isFirebaseReady() || !hasVisitedAnalytics) return;
       
-      return () => {
-        unsubCounters();
-        unsubGroups();
-        unsubTodos();
-        unsubSettings();
-      };
-    } else if (!isFirebaseConfigured) {
+      setIsLogsLoading(true);
+      getHistoryLogs(user.uid).then(fetchedLogs => {
+          setLogs(fetchedLogs);
+          setIsLogsLoading(false);
+      });
+      // No subscription for history logs, just one-time fetch per session
+  }, [user, hasVisitedAnalytics]);
+
+  // 5. Local Storage Sync (Offline backup only)
+  useEffect(() => {
+      if (!user) {
         localStorage.setItem('local_counters', JSON.stringify(counters));
         localStorage.setItem('local_groups', JSON.stringify(groups));
         localStorage.setItem('local_todos', JSON.stringify(todoLists));
-    }
-  }, [user, counters.length, groups.length, todoLists, isFirebaseConfigured]); 
+      }
+  }, [user, counters, groups, todoLists]);
 
   // Handlers ... (Keep existing handlers)
   const handleAddGroup = async () => {
     if (!newGroupName.trim()) return;
-    if (user) await addGroup(user.uid, newGroupName);
+    if (user && isFirebaseReady()) await addGroup(user.uid, newGroupName);
     else {
         setGroups(prev => [...prev, { id: Date.now().toString(), name: newGroupName, createdAt: Date.now() }]);
     }
@@ -437,7 +473,7 @@ export default function App() {
 
   const handleDeleteGroup = async (groupId: string) => {
     if (confirm("Delete this group?")) {
-        if (user) await deleteGroup(user.uid, groupId);
+        if (user && isFirebaseReady()) await deleteGroup(user.uid, groupId);
         else {
             setGroups(prev => prev.filter(g => g.id !== groupId));
             setCounters(prev => prev.map(c => c.groupId === groupId ? { ...c, groupId: undefined } : c));
@@ -446,7 +482,7 @@ export default function App() {
   };
 
   const handleUpdateCounterGroup = async (id: string, groupId: string | null) => {
-      if (user) await updateCounterGroup(user.uid, id, groupId);
+      if (user && isFirebaseReady()) await updateCounterGroup(user.uid, id, groupId);
       else setCounters(prev => prev.map(c => c.id === id ? { ...c, groupId: groupId || undefined } : c));
   };
 
@@ -475,7 +511,7 @@ export default function App() {
     const target = hasTarget && targetValue ? parseInt(targetValue) : undefined;
     const groupId = newCounterGroupId || undefined;
 
-    if (user) {
+    if (user && isFirebaseReady()) {
       await addCounter(user.uid, newCounterTitle, newCounterColor, target, resetDaily, groupId);
     } else {
       setCounters(prev => [{
@@ -495,9 +531,22 @@ export default function App() {
   };
 
   const handleUpdateCounter = async (id: string, delta: number) => {
-    if (user) {
+    if (user && isFirebaseReady()) {
       const counter = counters.find(c => c.id === id);
-      if(counter) await updateCounterValue(user.uid, id, delta, counter.count + delta);
+      if(counter) {
+          await updateCounterValue(user.uid, id, delta, counter.count + delta);
+          // Optimization: Optimistically update local logs to avoid fetching history from DB again.
+          // Only necessary if we have already fetched logs or are currently viewing analytics
+          if (hasVisitedAnalytics) {
+              setLogs(prev => [...prev, { 
+                 id: `temp_${Date.now()}`, 
+                 counterId: id, 
+                 timestamp: Date.now(), 
+                 valueChange: delta, 
+                 newValue: counter.count + delta 
+              }]);
+          }
+      }
     } else {
       setCounters(prev => prev.map(c => {
         if (c.id === id) {
@@ -511,33 +560,33 @@ export default function App() {
   };
 
   const handleRenameCounter = async (id: string, newTitle: string) => {
-      if (user) await updateCounterTitle(user.uid, id, newTitle);
+      if (user && isFirebaseReady()) await updateCounterTitle(user.uid, id, newTitle);
       else setCounters(prev => prev.map(c => c.id === id ? { ...c, title: newTitle } : c));
   };
 
   const handleUpdateTarget = async (id: string, newTarget: number | null) => {
-      if (user) await updateCounterTarget(user.uid, id, newTarget);
+      if (user && isFirebaseReady()) await updateCounterTarget(user.uid, id, newTarget);
       else setCounters(prev => prev.map(c => c.id === id ? { ...c, target: newTarget || undefined } : c));
   };
 
   const handleDeleteCounter = async (id: string) => {
-      if (user) await deleteCounter(user.uid, id);
+      if (user && isFirebaseReady()) await deleteCounter(user.uid, id);
       else setCounters(prev => prev.filter(c => c.id !== id));
       setActiveCounterId(null);
   };
 
   const handleAddTodoList = async (title: string, color: string) => {
-      if (user) await addTodoList(user.uid, title, color);
+      if (user && isFirebaseReady()) await addTodoList(user.uid, title, color);
       else setTodoLists(prev => [{ id: Date.now().toString(), title, color, items: [], createdAt: Date.now(), updatedAt: Date.now() }, ...prev]);
   };
 
   const handleUpdateTodoList = async (listId: string, data: Partial<TodoList>) => {
-      if (user) await updateTodoList(user.uid, listId, data);
+      if (user && isFirebaseReady()) await updateTodoList(user.uid, listId, data);
       else setTodoLists(prev => prev.map(list => list.id === listId ? { ...list, ...data, updatedAt: Date.now() } : list));
   };
 
   const handleDeleteTodoList = async (listId: string) => {
-      if (user) await deleteTodoList(user.uid, listId);
+      if (user && isFirebaseReady()) await deleteTodoList(user.uid, listId);
       else setTodoLists(prev => prev.filter(l => l.id !== listId));
   };
 
@@ -555,10 +604,16 @@ export default function App() {
   const handleExitSelectionMode = () => { setIsSelectionMode(false); setSelectedIds(new Set()); }
 
   const handleBulkDelete = async () => {
-      if (!user || selectedIds.size === 0) return;
-      if (confirm(`Delete ${selectedIds.size} counters?`)) {
-          await bulkDeleteCounters(user.uid, Array.from(selectedIds));
-          handleExitSelectionMode();
+      if (user && isFirebaseReady()) {
+        if (confirm(`Delete ${selectedIds.size} counters?`)) {
+            await bulkDeleteCounters(user.uid, Array.from(selectedIds));
+            handleExitSelectionMode();
+        }
+      } else if (!user) {
+          if (confirm(`Delete ${selectedIds.size} counters?`)) {
+            setCounters(prev => prev.filter(c => !selectedIds.has(c.id)));
+            handleExitSelectionMode();
+          }
       }
   };
 
@@ -613,7 +668,7 @@ export default function App() {
                     )}
                 </div>
 
-                {!user && isFirebaseConfigured && (
+                {!user && (
                     <button 
                         onClick={() => setShowAuthModal(true)}
                         className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full transition font-semibold border bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20"
@@ -630,10 +685,10 @@ export default function App() {
         
         {activeTab === 'dashboard' && (
           <div className="px-4 md:px-6 mt-4">
-             {!isFirebaseConfigured && (
+             {!user && (
                 <div className="bg-yellow-900/10 border border-yellow-700/30 p-3 rounded-xl text-yellow-500 text-xs mb-6 flex items-start gap-2">
                     <CloudOff size={16} className="shrink-0 mt-0.5" />
-                    <span><strong>Demo Mode:</strong> Data is saved locally. Sign in via Settings to sync.</span>
+                    <span><strong>Local Mode:</strong> Data is saved on this device. Sign in to sync.</span>
                 </div>
             )}
             
@@ -807,9 +862,16 @@ export default function App() {
 
         {activeTab === 'analytics' && (
           <div className="px-4 md:px-6 space-y-6 mt-4">
-             <div className="p-6 rounded-2xl border transition-colors duration-300 bg-gray-900 border-gray-800">
-                <CalendarStats logs={logs} counters={counters} />
-             </div>
+             {isLogsLoading ? (
+                 <div className="flex flex-col items-center justify-center h-64 text-gray-500 gap-3">
+                     <RefreshCw className="animate-spin text-indigo-500" size={32} />
+                     <p>Loading your history...</p>
+                 </div>
+             ) : (
+                <div className="p-6 rounded-2xl border transition-colors duration-300 bg-gray-900 border-gray-800">
+                    <CalendarStats logs={logs} counters={counters} />
+                </div>
+             )}
           </div>
         )}
 

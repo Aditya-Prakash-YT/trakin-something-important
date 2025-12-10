@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { TodoList, TodoNode } from '../types';
 import { 
   Plus, 
@@ -15,7 +15,12 @@ import {
   LayoutGrid,
   List,
   Calendar,
-  ArrowUpDown
+  ArrowUpDown,
+  Clock,
+  Search,
+  ListFilter,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import clsx from 'clsx';
 import { playClick } from '../services/sound';
@@ -43,14 +48,50 @@ const PRIORITIES = {
   low: { color: 'text-blue-500', fill: 'transparent', label: 'Low' } // Blue or Gray
 };
 
+// --- Helpers ---
+
+// Helper to safely get status from node, handling legacy 'completed' boolean data
+const getNodeStatus = (node: any): 'todo' | 'in-progress' | 'done' => {
+    if (node.status) return node.status;
+    return node.completed ? 'done' : 'todo';
+};
+
+const toInputDate = (ts: number) => {
+    const d = new Date(ts);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+const fromInputDate = (str: string) => {
+   const [y, m, d] = str.split('-').map(Number);
+   return new Date(y, m - 1, d).getTime();
+}
+
+const getDueDateLabel = (ts: number) => {
+    const d = new Date(ts);
+    // Normalize to start of day
+    d.setHours(0,0,0,0);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    const diff = (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+    
+    if (diff < 0) return { text: d.toLocaleDateString(undefined, {month:'short', day:'numeric'}), color: 'text-red-400', bg: 'bg-red-500/10' };
+    if (diff === 0) return { text: 'Today', color: 'text-amber-400', bg: 'bg-amber-500/10' };
+    if (diff === 1) return { text: 'Tomorrow', color: 'text-indigo-400', bg: 'bg-indigo-500/10' };
+    return { text: d.toLocaleDateString(undefined, {month:'short', day:'numeric'}), color: 'text-blue-400', bg: 'bg-blue-500/10' };
+}
+
 // Helper to flatten tree for preview
-const getPreviewItems = (nodes: TodoNode[], limit = 4): { id: string, completed: boolean, text: string, depth: number }[] => {
-    let preview: { id: string, completed: boolean, text: string, depth: number }[] = [];
+const getPreviewItems = (nodes: TodoNode[], limit = 4): { id: string, status: 'todo'|'in-progress'|'done', text: string, depth: number }[] => {
+    let preview: { id: string, status: 'todo'|'in-progress'|'done', text: string, depth: number }[] = [];
     
     const traverse = (currentNodes: TodoNode[], depth: number) => {
         for (const node of currentNodes) {
             if (preview.length >= limit) return;
-            preview.push({ id: node.id, completed: node.completed, text: node.text, depth });
+            preview.push({ id: node.id, status: getNodeStatus(node), text: node.text, depth });
             
             // Only dive deeper if we haven't hit the limit
             if (preview.length < limit && node.children && node.children.length > 0) {
@@ -71,13 +112,16 @@ const TodoItem: React.FC<{
   onToggle: (id: string) => void;
   onUpdateText: (id: string, text: string) => void;
   onUpdatePriority: (id: string, priority: 'high' | 'medium' | 'low') => void;
+  onUpdateDueDate: (id: string, date: number | undefined) => void;
   onAddSubItem: (parentId: string) => void;
   onDelete: (id: string) => void;
   onToggleExpand: (id: string) => void;
-}> = ({ node, depth, color, onToggle, onUpdateText, onUpdatePriority, onAddSubItem, onDelete, onToggleExpand }) => {
+}> = ({ node, depth, color, onToggle, onUpdateText, onUpdatePriority, onUpdateDueDate, onAddSubItem, onDelete, onToggleExpand }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(node.text);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  const status = getNodeStatus(node);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -102,12 +146,14 @@ const TodoItem: React.FC<{
     onUpdatePriority(node.id, next);
   };
 
+  const dueDateInfo = node.dueDate ? getDueDateLabel(node.dueDate) : null;
+
   return (
     <div className="flex flex-col">
       <div 
         className={clsx(
           "group flex items-center gap-2 p-2 rounded-lg hover:bg-gray-800/50 transition-all duration-200 relative min-h-[44px]",
-          node.completed && "opacity-60"
+          status === 'done' && "opacity-60"
         )}
         style={{ paddingLeft: `${depth * 24 + 8}px` }}
       >
@@ -129,17 +175,23 @@ const TodoItem: React.FC<{
           {node.isExpanded ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronRight size={14} className="text-gray-500" />}
         </button>
 
-        {/* Checkbox */}
+        {/* Status Toggle (Todo -> In Progress -> Done) */}
         <button 
           onClick={(e) => { e.stopPropagation(); onToggle(node.id); playClick(1.5); }}
           className="shrink-0 transition-transform active:scale-90 group-active:scale-95"
+          title={status === 'todo' ? "Start" : status === 'in-progress' ? "Complete" : "Reset"}
         >
-          {node.completed ? (
+          {status === 'done' ? (
              <CheckCircle2 
                 size={20} 
                 className="transition-colors duration-300 text-green-500"
                 fill="currentColor"
                 stroke="#111827" 
+             />
+          ) : status === 'in-progress' ? (
+             <Clock 
+                size={20}
+                className="transition-colors duration-300 text-amber-500"
              />
           ) : (
              <Circle size={20} className="text-gray-600 transition-colors hover:text-gray-400" />
@@ -163,7 +215,7 @@ const TodoItem: React.FC<{
               onClick={() => setIsEditing(true)}
               className={clsx(
                 "text-sm block truncate cursor-text select-none transition-all duration-300", 
-                node.completed ? "text-gray-500 line-through decoration-gray-700" : "text-gray-200"
+                status === 'done' ? "text-gray-500 line-through decoration-gray-700" : "text-gray-200"
               )}
             >
               {node.text}
@@ -173,6 +225,32 @@ const TodoItem: React.FC<{
 
         {/* Priority & Actions */}
         <div className="flex items-center gap-1">
+             
+             {/* Due Date Display/Edit */}
+             <div className="relative flex items-center">
+                <button
+                    className={clsx(
+                        "p-1.5 rounded transition flex items-center gap-1.5 relative z-0",
+                        node.dueDate ? clsx(dueDateInfo?.color, dueDateInfo?.bg) : "text-gray-700 hover:text-gray-400 hover:bg-gray-800"
+                    )}
+                    title={node.dueDate ? "Change due date" : "Set due date"}
+                >
+                    <Calendar size={14} />
+                    {dueDateInfo && <span className="text-[10px] font-bold">{dueDateInfo.text}</span>}
+                </button>
+                <input 
+                    type="date"
+                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                    value={node.dueDate ? toInputDate(node.dueDate) : ""}
+                    onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) onUpdateDueDate(node.id, undefined);
+                        else onUpdateDueDate(node.id, fromInputDate(val));
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                />
+             </div>
+
              {/* Priority Toggle */}
              <button
                 onClick={cyclePriority}
@@ -231,6 +309,7 @@ const TodoItem: React.FC<{
                 onToggle={onToggle}
                 onUpdateText={onUpdateText}
                 onUpdatePriority={onUpdatePriority}
+                onUpdateDueDate={onUpdateDueDate}
                 onAddSubItem={onAddSubItem}
                 onDelete={onDelete}
                 onToggleExpand={onToggleExpand}
@@ -252,6 +331,11 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortMode, setSortMode] = useState<'updated' | 'alpha'>('updated');
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Detail View Sort State
+  const [sortTaskMode, setSortTaskMode] = useState<'default' | 'priority' | 'date-asc' | 'date-desc'>('default');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   
   // Create List State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -261,17 +345,60 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
   // Create Item State
   const [newItemText, setNewItemText] = useState("");
   const [newItemPriority, setNewItemPriority] = useState<'low'|'medium'|'high'>('low');
+  const [newItemDueDate, setNewItemDueDate] = useState<string>("");
 
   // Delete Confirmation State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const activeList = lists.find(l => l.id === activeListId);
 
-  // Sorting
+  // Sorting Lists (Dashboard)
   const sortedLists = [...lists].sort((a, b) => {
       if (sortMode === 'alpha') return a.title.localeCompare(b.title);
       return b.updatedAt - a.updatedAt;
   });
+
+  // Filtering Lists (Dashboard)
+  const filteredLists = sortedLists.filter(list => 
+    list.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Sorting Items (Detail View)
+  const visibleItems = useMemo(() => {
+    if (!activeList) return [];
+    
+    // Recursive sort function
+    const sortNodes = (nodes: TodoNode[]): TodoNode[] => {
+        if (sortTaskMode === 'default') return nodes;
+        
+        const sorted = [...nodes].sort((a, b) => {
+            if (sortTaskMode === 'priority') {
+                const pMap: Record<string, number> = { high: 3, medium: 2, low: 1 };
+                const pa = pMap[a.priority || ''] || 0;
+                const pb = pMap[b.priority || ''] || 0;
+                if (pa !== pb) return pb - pa;
+            }
+            if (sortTaskMode === 'date-asc') {
+                 if (a.dueDate && b.dueDate) return a.dueDate - b.dueDate;
+                 if (a.dueDate) return -1; // No date comes last in ASC? Or first? Usually last.
+                 if (b.dueDate) return 1;
+            }
+            if (sortTaskMode === 'date-desc') {
+                 if (a.dueDate && b.dueDate) return b.dueDate - a.dueDate;
+                 if (a.dueDate) return 1; // No date comes last
+                 if (b.dueDate) return -1;
+            }
+            return 0; // Stable
+        });
+        
+        return sorted.map(node => ({
+            ...node,
+            children: sortNodes(node.children)
+        }));
+    };
+
+    return sortNodes(activeList.items);
+  }, [activeList, sortTaskMode]);
 
   // --- Recursive Helpers ---
 
@@ -324,22 +451,37 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
     const newItem: TodoNode = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
       text: newItemText,
-      completed: false,
+      status: 'todo',
       isExpanded: true,
       children: [],
-      priority: newItemPriority
+      priority: newItemPriority,
+      dueDate: newItemDueDate ? fromInputDate(newItemDueDate) : undefined
     };
 
     onUpdateList(activeList.id, {
       items: [newItem, ...activeList.items]
     });
     setNewItemText("");
-    setNewItemPriority('low'); // Reset to default
+    setNewItemPriority('low'); 
+    setNewItemDueDate("");
   };
 
   const handleToggle = (id: string) => {
     if (!activeList) return;
-    const newItems = updateNodeInTree(activeList.items, id, (node) => ({ ...node, completed: !node.completed }));
+    
+    const newItems = updateNodeInTree(activeList.items, id, (node) => {
+        const current = getNodeStatus(node);
+        let next: 'todo' | 'in-progress' | 'done' = 'in-progress';
+        
+        if (current === 'todo') next = 'in-progress';
+        else if (current === 'in-progress') next = 'done';
+        else next = 'todo';
+
+        // Clean up legacy completed prop if present
+        const { completed, ...rest } = node as any;
+        return { ...rest, status: next };
+    });
+    
     onUpdateList(activeList.id, { items: newItems });
   };
 
@@ -354,6 +496,12 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
     const newItems = updateNodeInTree(activeList.items, id, (node) => ({ ...node, priority }));
     onUpdateList(activeList.id, { items: newItems });
   }
+
+  const handleUpdateDueDate = (id: string, date: number | undefined) => {
+    if (!activeList) return;
+    const newItems = updateNodeInTree(activeList.items, id, (node) => ({ ...node, dueDate: date }));
+    onUpdateList(activeList.id, { items: newItems });
+  };
 
   const handleToggleExpand = (id: string) => {
     if (!activeList) return;
@@ -372,7 +520,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
     const newItem: TodoNode = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
       text: "New sub-task",
-      completed: false,
+      status: 'todo',
       isExpanded: true,
       children: [],
       priority: 'low'
@@ -404,26 +552,76 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
              >
                 <ArrowLeft size={20} />
              </button>
-             <h2 className="text-xl font-bold text-white truncate max-w-[200px]">{activeList.title}</h2>
+             <h2 className="text-xl font-bold text-white truncate max-w-[150px] sm:max-w-[200px]">{activeList.title}</h2>
              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: activeList.color }} />
           </div>
-          <button 
-             onClick={() => setShowDeleteConfirm(true)}
-             className="p-2 text-red-400 hover:bg-red-900/20 rounded-full transition"
-          >
-              <Trash2 size={18} />
-          </button>
+          
+          <div className="flex items-center gap-1">
+             <div className="relative">
+                 <button 
+                    onClick={() => setShowSortMenu(!showSortMenu)}
+                    className={clsx(
+                        "p-2 rounded-full transition relative",
+                        showSortMenu ? "bg-gray-800 text-white" : "text-gray-400 hover:text-white hover:bg-gray-800",
+                        sortTaskMode !== 'default' && "text-indigo-400"
+                    )}
+                    title="Sort Tasks"
+                 >
+                    <ListFilter size={18} />
+                    {sortTaskMode !== 'default' && <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>}
+                 </button>
+                 
+                 {showSortMenu && (
+                     <>
+                        <div className="fixed inset-0 z-10" onClick={() => setShowSortMenu(false)}></div>
+                        <div className="absolute right-0 top-full mt-2 w-48 bg-gray-900 border border-gray-800 rounded-xl shadow-xl z-20 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                             <button 
+                                onClick={() => { setSortTaskMode('default'); setShowSortMenu(false); }}
+                                className={clsx("w-full px-4 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-800", sortTaskMode === 'default' ? "text-indigo-400" : "text-gray-300")}
+                             >
+                                 <List size={14} /> Default
+                             </button>
+                             <button 
+                                onClick={() => { setSortTaskMode('priority'); setShowSortMenu(false); }}
+                                className={clsx("w-full px-4 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-800", sortTaskMode === 'priority' ? "text-indigo-400" : "text-gray-300")}
+                             >
+                                 <Flag size={14} /> Priority (High-Low)
+                             </button>
+                             <button 
+                                onClick={() => { setSortTaskMode('date-asc'); setShowSortMenu(false); }}
+                                className={clsx("w-full px-4 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-800", sortTaskMode === 'date-asc' ? "text-indigo-400" : "text-gray-300")}
+                             >
+                                 <ArrowUp size={14} /> Due Date (Earliest)
+                             </button>
+                             <button 
+                                onClick={() => { setSortTaskMode('date-desc'); setShowSortMenu(false); }}
+                                className={clsx("w-full px-4 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-800", sortTaskMode === 'date-desc' ? "text-indigo-400" : "text-gray-300")}
+                             >
+                                 <ArrowDown size={14} /> Due Date (Latest)
+                             </button>
+                        </div>
+                     </>
+                 )}
+             </div>
+
+             <button 
+                onClick={() => setShowDeleteConfirm(true)}
+                className="p-2 text-red-400 hover:bg-red-900/20 rounded-full transition"
+             >
+                 <Trash2 size={18} />
+             </button>
+          </div>
         </div>
 
         {/* List Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2 pb-32">
-            {activeList.items.length === 0 ? (
+            {visibleItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-gray-500 gap-4">
                     <CheckCircle2 size={48} className="opacity-20" />
                     <p>No tasks yet. Add one below!</p>
                 </div>
             ) : (
-                activeList.items.map(node => (
+                visibleItems.map(node => (
                     <TodoItem 
                         key={node.id} 
                         node={node} 
@@ -432,6 +630,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                         onToggle={handleToggle}
                         onUpdateText={handleUpdateText}
                         onUpdatePriority={handleUpdatePriority}
+                        onUpdateDueDate={handleUpdateDueDate}
                         onAddSubItem={handleAddSubItem}
                         onDelete={handleDeleteItem}
                         onToggleExpand={handleToggleExpand}
@@ -448,6 +647,21 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                 )}>
                     {/* Priority Selector */}
                     <div className="flex items-center gap-1 pl-2 border-r border-gray-800 pr-2 mr-2">
+                        {/* Due Date Input */}
+                        <div className="relative group flex items-center justify-center p-1.5 rounded hover:bg-gray-800 transition">
+                            <Calendar size={18} className={newItemDueDate ? "text-indigo-400" : "text-gray-600"} />
+                            <input 
+                                type="date" 
+                                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                value={newItemDueDate}
+                                onChange={(e) => setNewItemDueDate(e.target.value)}
+                                title="Set due date"
+                            />
+                            {newItemDueDate && <div className="absolute -top-1 -right-1 w-2 h-2 bg-indigo-500 rounded-full border border-gray-900"></div>}
+                        </div>
+
+                        <div className="w-px h-4 bg-gray-800 mx-1"></div>
+
                         <button 
                             type="button"
                             onClick={() => setNewItemPriority('high')}
@@ -533,46 +747,60 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
   return (
     <div className="px-4 md:px-6 mt-4 pb-24 h-full overflow-y-auto">
         
-        {/* Toolbar */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div className="flex gap-1 bg-gray-900/50 p-1 rounded-xl border border-gray-800/50">
-                <button 
-                    onClick={() => setViewMode('grid')}
-                    className={clsx("p-2 rounded-lg transition-all", viewMode === 'grid' ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-300")}
-                >
-                    <LayoutGrid size={16} />
-                </button>
-                <button 
-                     onClick={() => setViewMode('list')}
-                     className={clsx("p-2 rounded-lg transition-all", viewMode === 'list' ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-300")}
-                >
-                    <List size={16} />
-                </button>
+        <div className="flex flex-col gap-4 mb-6">
+            {/* Search */}
+            <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search lists..."
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-10 pr-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors text-sm"
+                />
             </div>
 
-            <div className="flex gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar items-center">
-                 <button 
-                    onClick={() => setSortMode('updated')}
-                    className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
-                        sortMode === 'updated' 
-                            ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" 
-                            : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
-                    )}
-                >
-                    <Calendar size={14} />
-                    <span className="hidden sm:inline text-xs font-medium">Recent</span>
-                </button>
-                <button 
-                    onClick={() => setSortMode('alpha')}
-                    className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
-                        sortMode === 'alpha' 
-                            ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" 
-                            : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
-                    )}
-                >
-                    <ArrowUpDown size={14} />
-                    <span className="hidden sm:inline text-xs font-medium">A-Z</span>
-                </button>
+            {/* Controls */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex gap-1 bg-gray-900/50 p-1 rounded-xl border border-gray-800/50">
+                    <button 
+                        onClick={() => setViewMode('grid')}
+                        className={clsx("p-2 rounded-lg transition-all", viewMode === 'grid' ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                    >
+                        <LayoutGrid size={16} />
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('list')}
+                        className={clsx("p-2 rounded-lg transition-all", viewMode === 'list' ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                    >
+                        <List size={16} />
+                    </button>
+                </div>
+
+                <div className="flex gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar items-center">
+                    <button 
+                        onClick={() => setSortMode('updated')}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                            sortMode === 'updated' 
+                                ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" 
+                                : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
+                        )}
+                    >
+                        <Calendar size={14} />
+                        <span className="hidden sm:inline text-xs font-medium">Recent</span>
+                    </button>
+                    <button 
+                        onClick={() => setSortMode('alpha')}
+                        className={clsx("px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 shrink-0", 
+                            sortMode === 'alpha' 
+                                ? "bg-indigo-900/20 border-indigo-500/30 text-indigo-400" 
+                                : "bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-900"
+                        )}
+                    >
+                        <ArrowUpDown size={14} />
+                        <span className="hidden sm:inline text-xs font-medium">A-Z</span>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -590,9 +818,14 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                     <span className="font-bold text-lg">Create List</span>
                 </button>
             </div>
+        ) : filteredLists.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-500 animate-in fade-in">
+                <p>No lists matching "{searchQuery}"</p>
+                <button onClick={() => setSearchQuery("")} className="text-indigo-400 text-sm mt-2 hover:underline">Clear search</button>
+            </div>
         ) : (
             <div className={clsx("grid gap-4", viewMode === 'grid' ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1")}>
-                {sortedLists.map(list => {
+                {filteredLists.map(list => {
                      const total = list.items.length; // Approximate top-level count
                      const previewItems = getPreviewItems(list.items, 4);
 
@@ -660,15 +893,18 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                                     <div key={item.id} className="flex items-center gap-2" style={{ paddingLeft: item.depth * 12 }}>
                                         <div className={clsx(
                                             "w-3 h-3 rounded flex items-center justify-center border",
-                                            item.completed 
+                                            item.status === 'done'
                                                 ? "bg-indigo-500 border-indigo-500" 
-                                                : "border-gray-600 bg-transparent"
+                                                : item.status === 'in-progress'
+                                                    ? "bg-amber-500/20 border-amber-500/50"
+                                                    : "border-gray-600 bg-transparent"
                                         )}>
-                                            {item.completed && <Check size={8} className="text-white" />}
+                                            {item.status === 'done' && <Check size={8} className="text-white" />}
+                                            {item.status === 'in-progress' && <div className="w-1 h-1 rounded-full bg-amber-500" />}
                                         </div>
                                         <span className={clsx(
                                             "text-[10px] truncate max-w-[80%]",
-                                            item.completed ? "text-gray-600 line-through" : "text-gray-400"
+                                            item.status === 'done' ? "text-gray-600 line-through" : "text-gray-400"
                                         )}>
                                             {item.text}
                                         </span>
