@@ -37,6 +37,48 @@ const InputField: React.FC<InputFieldProps> = ({ label, icon: Icon, className, .
   </div>
 );
 
+// Robust parser for Firebase config (JSON or JS Object)
+const parseFirebaseConfig = (input: string): FirebaseConfig => {
+  const clean = input.trim();
+  
+  // 1. Try standard JSON parse
+  try {
+    const parsed = JSON.parse(clean);
+    if (parsed.apiKey) return parsed;
+  } catch (e) {
+    // Continue
+  }
+
+  // 2. Regex extraction for JS Object format
+  const config: any = {};
+  const keys = [
+    'apiKey', 
+    'authDomain', 
+    'projectId', 
+    'storageBucket', 
+    'messagingSenderId', 
+    'appId', 
+    'measurementId'
+  ];
+  
+  let found = false;
+  keys.forEach(key => {
+    // Matches key: "value" or 'key': 'value' or key:"value"
+    const regex = new RegExp(`['"]?${key}['"]?\\s*:\\s*['"]([^'"]+)['"]`, 'i');
+    const match = input.match(regex);
+    if (match && match[1]) {
+      config[key] = match[1];
+      found = true;
+    }
+  });
+
+  if (!found || !config.apiKey || !config.projectId) {
+     throw new Error("Invalid format. Copy the object directly from the Firebase Console.");
+  }
+  
+  return config as FirebaseConfig;
+};
+
 export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
   const [isSignup, setIsSignup] = useState(false);
   const [step, setStep] = useState<Step>('credentials');
@@ -82,13 +124,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
     try {
       if (isSignup) {
-        // Validation for JSON
+        // Parsing logic handles both JSON and JS Object
         let config: FirebaseConfig;
         try {
-            config = JSON.parse(dbConfigStr);
-            if (!config.apiKey || !config.projectId) throw new Error("Invalid config");
-        } catch (err) {
-            throw new Error("Invalid JSON Configuration. Please copy directly from Firebase Console.");
+            config = parseFirebaseConfig(dbConfigStr);
+        } catch (err: any) {
+            throw new Error(err.message || "Invalid configuration format.");
         }
 
         setLoadingText("Creating Account...");
@@ -105,10 +146,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
     } catch (err: any) {
       console.error(err);
       let msg = err.message || "Authentication failed.";
+      
+      // Known Firebase Errors
       if (err.code === 'auth/invalid-email') msg = "Invalid email address.";
       if (err.code === 'auth/user-not-found') msg = "No user found with this email.";
       if (err.code === 'auth/wrong-password') msg = "Incorrect password.";
-      if (err.code === 'auth/email-already-in-use') msg = "Email already in use in the primary system.";
+      if (err.code === 'auth/email-already-in-use') msg = "Email already in use.";
+      if (err.code === 'permission-denied' || msg.includes('insufficient permissions')) {
+          msg = "Permission denied. Please check your Firestore Security Rules (Step 3 in Tutorial).";
+      }
+
       setError(msg);
       setLoading(false);
     }
@@ -198,23 +245,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
           {step === 'database' && (
               <div className="space-y-6 animate-in slide-in-from-right-8 fade-in duration-300 fill-mode-forwards pb-2">
-                  <div className="bg-indigo-500/10 border border-indigo-500/20 p-5 rounded-2xl relative">
-                      <h4 className="text-sm font-bold text-indigo-400 mb-2 flex items-center gap-2">
-                          <Database size={16} /> Data Sovereignty
-                      </h4>
-                      <p className="text-xs text-indigo-200/70 leading-relaxed mb-4">
-                          TallyMaster separates authentication from data. We authenticate you, but <strong>you own the database</strong>. 
-                          Please paste your Firebase Project configuration below.
-                      </p>
-                      
-                      <button
-                        type="button"
-                        onClick={() => setShowTutorial(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-indigo-500/20 ml-auto"
-                      >
-                         <BookOpen size={12} />
-                         Tutorial
-                      </button>
+                  {/* Info Box */}
+                  <div className="bg-indigo-900/20 border border-indigo-500/20 p-5 rounded-2xl relative flex flex-col gap-4">
+                      <div className="flex justify-between items-start">
+                          <p className="text-xs text-indigo-200/80 leading-relaxed pr-2">
+                              TallyMaster separates authentication from data. We authenticate you, but <strong>you own the database</strong>. 
+                          </p>
+                      </div>
+                      <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setShowTutorial(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-colors border border-indigo-500/30"
+                          >
+                             <BookOpen size={14} />
+                             Tutorial
+                          </button>
+                      </div>
                   </div>
                   
                   <div className="space-y-2 group">
@@ -234,7 +281,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
                     <textarea 
                         value={dbConfigStr}
                         onChange={(e) => setDbConfigStr(e.target.value)}
-                        placeholder='{ "apiKey": "AIza...", "authDomain": "...", "projectId": "..." }'
+                        placeholder={'{\n  apiKey: "...",\n  authDomain: "...",\n  projectId: "..."\n}'}
                         disabled={loading}
                         className="w-full h-40 bg-gray-950/50 border border-gray-800 rounded-xl p-4 text-xs font-mono text-gray-300 placeholder-gray-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 focus:bg-gray-950 focus:outline-none transition-all duration-300 resize-none disabled:opacity-50"
                     />

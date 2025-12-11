@@ -260,11 +260,11 @@ export const CounterView: React.FC<CounterViewProps> = ({
         {ripples.map(r => <Ripple key={r.id} x={r.x} y={r.y} />)}
         
         {/* Central Stats Group */}
-        <div className="w-full max-w-xs flex flex-col items-center -mt-24 pointer-events-none">
+        <div className="w-full max-w-xs flex flex-col items-center pointer-events-none transform -translate-y-12">
             
             {/* Progress Section */}
             {counter.target && (
-                <div className="w-full mb-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="w-full mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">
                         <span>Progress</span>
                         <span>{Math.round(calculateProgress())}%</span>
@@ -326,32 +326,34 @@ export const CounterView: React.FC<CounterViewProps> = ({
                         </button>
                     )}
             </div>
-
-             {/* Hint */}
-             <div className="mt-12 flex items-center gap-2 text-gray-600 text-[10px] font-bold opacity-40 uppercase tracking-widest">
-                <Keyboard size={12} />
-                <span>Press Space to Count</span>
-             </div>
          </div>
       </div>
 
       {/* Explicit Controls Footer */}
       <div 
-        className="absolute bottom-8 left-0 right-0 px-6 pb-[env(safe-area-inset-bottom)] flex items-end justify-center gap-4 sm:gap-8 z-40 pointer-events-none"
+        className="absolute bottom-0 left-0 right-0 px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-24 flex flex-col items-center justify-end z-40 pointer-events-none bg-gradient-to-t from-gray-950 via-gray-950/90 to-transparent"
       >
-        <button 
-          onClick={(e) => { e.stopPropagation(); handleUpdate(-1); }}
-          className="pointer-events-auto w-24 h-24 sm:w-28 sm:h-28 rounded-[2rem] bg-gray-900/80 border border-gray-800 text-gray-500 hover:text-white hover:bg-gray-800 active:scale-95 transition-all flex items-center justify-center shadow-xl backdrop-blur-sm group"
-        >
-          <Minus size={32} className="group-hover:scale-110 transition-transform" />
-        </button>
-        <button 
-          onClick={(e) => { e.stopPropagation(); handleUpdate(1); }}
-          className="pointer-events-auto w-32 h-32 sm:w-36 sm:h-36 rounded-[2.5rem] flex items-center justify-center transition-all active:scale-95 shadow-2xl shadow-indigo-500/20 text-white hover:brightness-110"
-          style={{ backgroundColor: displayColor }}
-        >
-          <Plus size={48} className="drop-shadow-md" />
-        </button>
+        <div className="flex items-center gap-2 text-gray-600 text-[10px] font-bold uppercase tracking-widest mb-6 pointer-events-auto opacity-60 animate-pulse">
+            <Keyboard size={12} />
+            <span>Press Space to Count</span>
+        </div>
+
+        <div className="flex items-center justify-center gap-6 pointer-events-auto">
+            <button 
+            onClick={(e) => { e.stopPropagation(); handleUpdate(-1); }}
+            className="w-24 h-24 rounded-[2rem] bg-gray-900/80 border border-gray-800 text-gray-500 hover:text-white hover:bg-gray-800 hover:border-gray-700 active:scale-95 transition-all flex items-center justify-center shadow-xl backdrop-blur-sm group"
+            >
+            <Minus size={32} className="group-hover:scale-110 transition-transform opacity-70 group-hover:opacity-100" />
+            </button>
+            <button 
+            onClick={(e) => { e.stopPropagation(); handleUpdate(1); }}
+            className="w-32 h-32 rounded-[2.5rem] flex items-center justify-center transition-all active:scale-95 shadow-2xl shadow-indigo-500/20 text-white hover:brightness-110 hover:shadow-indigo-500/40 group relative overflow-hidden"
+            style={{ backgroundColor: displayColor }}
+            >
+            <div className="absolute inset-0 bg-gradient-to-tr from-black/10 to-transparent pointer-events-none" />
+            <Plus size={56} className="drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+            </button>
+        </div>
       </div>
 
       {/* Menu Modal */}

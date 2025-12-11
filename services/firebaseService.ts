@@ -82,11 +82,18 @@ export const initFirebase = (): boolean => {
 
 export const isFirebaseReady = () => !!secondaryDb && !!secondaryAuth;
 
+// Helper to get the correct User ID for data operations.
+// We prioritize the Secondary Auth UID because that matches the Security Rules
+// of the user's provided database.
+const getEffectiveUid = (primaryUid: string): string => {
+    return secondaryAuth?.currentUser?.uid || primaryUid;
+};
+
 // --- DUAL-AUTH OPERATIONS ---
 
 /**
  * 1. Register in Primary DB.
- * 2. Save Secondary credentials in Primary DB.
+ * 2. Save Secondary credentials in Primary DB (fallback to local).
  * 3. Init Secondary App.
  * 4. Register in Secondary DB.
  */
@@ -97,11 +104,16 @@ export const registerUser = async (name: string, email: string, pass: string, se
   const primaryCreds = await createUserWithEmailAndPassword(primaryAuth, email, pass);
   await updateProfile(primaryCreds.user, { displayName: name });
 
-  // 2. Save Secondary Config to Primary DB
-  await setDoc(doc(primaryDb, "users", primaryCreds.user.uid, "system", "dbConfig"), {
-    config: secondaryConfig,
-    updatedAt: Date.now()
-  });
+  // 2. Save Secondary Config to Primary DB (with fallback)
+  try {
+      await setDoc(doc(primaryDb, "users", primaryCreds.user.uid, "system", "dbConfig"), {
+        config: secondaryConfig,
+        updatedAt: Date.now()
+      });
+  } catch (e) {
+      console.warn("Primary DB Write Failed, saving config locally", e);
+      localStorage.setItem(`dbConfig_${primaryCreds.user.uid}`, JSON.stringify(secondaryConfig));
+  }
 
   // 3. Initialize Secondary App
   await initSecondaryApp(secondaryConfig, "secondary_" + primaryCreds.user.uid);
@@ -127,7 +139,7 @@ export const registerUser = async (name: string, email: string, pass: string, se
 
 /**
  * 1. Login to Primary.
- * 2. Fetch Config.
+ * 2. Fetch Config (Cloud or Local).
  * 3. Init Secondary.
  * 4. Login to Secondary (using passed password).
  */
@@ -138,15 +150,29 @@ export const loginUser = async (email: string, pass: string) => {
   const primaryCreds = await signInWithEmailAndPassword(primaryAuth, email, pass);
   
   // 2. Fetch Config
-  const configDoc = await getDoc(doc(primaryDb, "users", primaryCreds.user.uid, "system", "dbConfig"));
+  let config: FirebaseConfig | null = null;
   
-  if (!configDoc.exists()) {
-      // Edge case: User exists in primary but no config saved? 
-      // This might happen if previous registration failed halfway.
-      throw new Error("Account configuration missing. Please contact support.");
+  // Try Cloud
+  try {
+    const configDoc = await getDoc(doc(primaryDb, "users", primaryCreds.user.uid, "system", "dbConfig"));
+    if (configDoc.exists()) {
+        config = configDoc.data().config;
+    }
+  } catch (e) {
+      console.warn("Could not fetch cloud config", e);
   }
 
-  const { config } = configDoc.data() as { config: FirebaseConfig };
+  // Try Local Fallback
+  if (!config) {
+      const local = localStorage.getItem(`dbConfig_${primaryCreds.user.uid}`);
+      if (local) {
+          try { config = JSON.parse(local); } catch(e) {}
+      }
+  }
+  
+  if (!config) {
+      throw new Error("Account configuration missing. Please check your internet or contact support.");
+  }
 
   // 3. Init Secondary
   await initSecondaryApp(config, "secondary_" + primaryCreds.user.uid);
@@ -183,8 +209,6 @@ export const logout = async () => {
 
 /**
  * Subscribes to PRIMARY auth state, but we really care about the secondary flow.
- * Since we handle the secondary login manually in loginUser/registerUser,
- * this listener mainly confirms the session persistence of the Primary account.
  */
 export const subscribeToAuth = (callback: (user: User | null) => void) => {
   if (!primaryAuth) {
@@ -199,24 +223,11 @@ export const subscribeToAuth = (callback: (user: User | null) => void) => {
         callback(null);
     } else {
         // Logged in (Session restored)
-        // If we are refreshing the page, 'secondaryDb' will be undefined.
-        // We cannot auto-restore secondary session because we don't have the password 
-        // in memory anymore to sign in to the Secondary DB.
-        
-        // However, if we just logged in via the explicit functions above, secondaryDb is set.
         if (secondaryDb) {
             callback(user);
         } else {
-            // Page refresh scenario:
-            // We have Primary Auth, but we need to re-hydrate Secondary.
-            // Problem: We don't have the password.
-            // Solution: We force the user to re-login to get the password, 
-            // OR we rely on Firebase Auth Persistence for the secondary app *if* we named it uniquely.
-            // But getting the secondary persistence to fire before we have the config is tricky.
-            
-            // For this implementation, on a hard refresh, we will force a logout 
-            // because we can't decrypt the secondary DB without re-authenticating.
-            console.log("Session restore requires re-authentication for security.");
+            // Force re-login on refresh to restore secondary session securely
+            // (Simpler than storing config in localStorage universally)
             await signOut(primaryAuth);
             callback(null);
         }
@@ -233,8 +244,10 @@ export const subscribeToCounters = (
 ) => {
   if (!secondaryDb) return () => {};
   
+  const effectiveUid = getEffectiveUid(userId);
+  
   const q = query(
-    collection(secondaryDb, "users", userId, "counters"),
+    collection(secondaryDb, "users", effectiveUid, "counters"),
     orderBy("lastUpdated", "desc")
   );
 
@@ -242,6 +255,11 @@ export const subscribeToCounters = (
     const counters = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const isSyncing = snapshot.metadata.hasPendingWrites;
     callback(counters, isSyncing);
+  }, (error) => {
+      console.error("Counter Subscription Error:", error);
+      if (error.code === 'permission-denied') {
+          console.error("Check your Firestore Security Rules!");
+      }
   });
 };
 
@@ -250,9 +268,10 @@ export const subscribeToGroups = (
   callback: (groups: CounterGroup[]) => void
 ) => {
   if (!secondaryDb) return () => {};
+  const effectiveUid = getEffectiveUid(userId);
   
   const q = query(
-    collection(secondaryDb, "users", userId, "groups"),
+    collection(secondaryDb, "users", effectiveUid, "groups"),
     orderBy("createdAt", "asc")
   );
 
@@ -264,7 +283,8 @@ export const subscribeToGroups = (
 
 export const addGroup = async (userId: string, name: string) => {
   if (!secondaryDb) throw new Error("No DB");
-  await addDoc(collection(secondaryDb, "users", userId, "groups"), {
+  const effectiveUid = getEffectiveUid(userId);
+  await addDoc(collection(secondaryDb, "users", effectiveUid, "groups"), {
     name,
     createdAt: Date.now()
   });
@@ -272,11 +292,12 @@ export const addGroup = async (userId: string, name: string) => {
 
 export const deleteGroup = async (userId: string, groupId: string) => {
   if (!secondaryDb) throw new Error("No DB");
+  const effectiveUid = getEffectiveUid(userId);
 
   const batch = writeBatch(secondaryDb);
-  batch.delete(doc(secondaryDb, "users", userId, "groups", groupId));
+  batch.delete(doc(secondaryDb, "users", effectiveUid, "groups", groupId));
 
-  const countersRef = collection(secondaryDb, "users", userId, "counters");
+  const countersRef = collection(secondaryDb, "users", effectiveUid, "counters");
   const q = query(countersRef, where("groupId", "==", groupId));
   const snapshot = await getDocs(q);
   
@@ -289,6 +310,7 @@ export const deleteGroup = async (userId: string, groupId: string) => {
 
 export const addCounter = async (userId: string, title: string, color: string, target?: number, resetDaily: boolean = false, groupId?: string) => {
   if (!secondaryDb) throw new Error("No DB");
+  const effectiveUid = getEffectiveUid(userId);
   
   const data: any = {
     title,
@@ -308,18 +330,20 @@ export const addCounter = async (userId: string, title: string, color: string, t
     data.groupId = groupId;
   }
   
-  await addDoc(collection(secondaryDb, "users", userId, "counters"), data);
+  await addDoc(collection(secondaryDb, "users", effectiveUid, "counters"), data);
 };
 
 export const updateCounterTitle = async (userId: string, counterId: string, newTitle: string) => {
   if (!secondaryDb) throw new Error("No DB");
-  const counterRef = doc(secondaryDb, "users", userId, "counters", counterId);
+  const effectiveUid = getEffectiveUid(userId);
+  const counterRef = doc(secondaryDb, "users", effectiveUid, "counters", counterId);
   await updateDoc(counterRef, { title: newTitle });
 };
 
 export const updateCounterGroup = async (userId: string, counterId: string, groupId: string | null) => {
   if (!secondaryDb) throw new Error("No DB");
-  const counterRef = doc(secondaryDb, "users", userId, "counters", counterId);
+  const effectiveUid = getEffectiveUid(userId);
+  const counterRef = doc(secondaryDb, "users", effectiveUid, "counters", counterId);
   if (groupId === null) {
     await updateDoc(counterRef, { groupId: deleteField() });
   } else {
@@ -329,7 +353,8 @@ export const updateCounterGroup = async (userId: string, counterId: string, grou
 
 export const updateCounterTarget = async (userId: string, counterId: string, newTarget: number | null) => {
   if (!secondaryDb) throw new Error("No DB");
-  const counterRef = doc(secondaryDb, "users", userId, "counters", counterId);
+  const effectiveUid = getEffectiveUid(userId);
+  const counterRef = doc(secondaryDb, "users", effectiveUid, "counters", counterId);
   if (newTarget === null) {
       await updateDoc(counterRef, { target: deleteField() });
   } else {
@@ -339,14 +364,16 @@ export const updateCounterTarget = async (userId: string, counterId: string, new
 
 export const deleteCounter = async (userId: string, counterId: string) => {
     if (!secondaryDb) throw new Error("No DB");
-    await deleteDoc(doc(secondaryDb, "users", userId, "counters", counterId));
+    const effectiveUid = getEffectiveUid(userId);
+    await deleteDoc(doc(secondaryDb, "users", effectiveUid, "counters", counterId));
 }
 
 export const bulkDeleteCounters = async (userId: string, counterIds: string[]) => {
   if (!secondaryDb) throw new Error("No DB");
+  const effectiveUid = getEffectiveUid(userId);
   const batch = writeBatch(secondaryDb);
   counterIds.forEach(id => {
-      const ref = doc(secondaryDb, "users", userId, "counters", id);
+      const ref = doc(secondaryDb!, "users", effectiveUid, "counters", id);
       batch.delete(ref);
   });
   await batch.commit();
@@ -354,9 +381,10 @@ export const bulkDeleteCounters = async (userId: string, counterIds: string[]) =
 
 export const bulkUpdateCounterGroup = async (userId: string, counterIds: string[], groupId: string | null) => {
   if (!secondaryDb) throw new Error("No DB");
+  const effectiveUid = getEffectiveUid(userId);
   const batch = writeBatch(secondaryDb);
   counterIds.forEach(id => {
-      const ref = doc(secondaryDb, "users", userId, "counters", id);
+      const ref = doc(secondaryDb!, "users", effectiveUid, "counters", id);
       if (groupId === null) {
           batch.update(ref, { groupId: deleteField() });
       } else {
@@ -368,16 +396,17 @@ export const bulkUpdateCounterGroup = async (userId: string, counterIds: string[
 
 export const updateCounterValue = async (userId: string, counterId: string, delta: number, newValue: number) => {
   if (!secondaryDb) throw new Error("No DB");
+  const effectiveUid = getEffectiveUid(userId);
 
   const batch = writeBatch(secondaryDb);
   
-  const counterRef = doc(secondaryDb, "users", userId, "counters", counterId);
+  const counterRef = doc(secondaryDb, "users", effectiveUid, "counters", counterId);
   batch.update(counterRef, {
     count: increment(delta),
     lastUpdated: Date.now()
   });
 
-  const logsRef = collection(secondaryDb, "users", userId, "logs");
+  const logsRef = collection(secondaryDb, "users", effectiveUid, "logs");
   batch.set(doc(logsRef), { 
     counterId,
     timestamp: Date.now(),
@@ -390,8 +419,9 @@ export const updateCounterValue = async (userId: string, counterId: string, delt
 
 export const getHistoryLogs = async (userId: string, daysBack: number = 365): Promise<CounterLog[]> => {
   if (!secondaryDb) return [];
+  const effectiveUid = getEffectiveUid(userId);
 
-  const CACHE_KEY = `tm_logs_cache_${userId}`;
+  const CACHE_KEY = `tm_logs_cache_${effectiveUid}`;
   const now = Date.now();
   const cutoff = now - (daysBack * 24 * 60 * 60 * 1000);
   
@@ -412,14 +442,11 @@ export const getHistoryLogs = async (userId: string, daysBack: number = 365): Pr
       console.warn("Failed to load logs cache", e);
   }
 
-  // Ensure we don't query further back than we need if cache is empty or old
   const queryStart = Math.max(lastFetch, cutoff);
 
   // 2. Fetch New Logs
-  // We add 1ms to avoid fetching the last log again if timestamps match exactly, 
-  // though typically > comparison is enough.
   const q = query(
-    collection(secondaryDb, "users", userId, "logs"),
+    collection(secondaryDb, "users", effectiveUid, "logs"),
     where("timestamp", ">", queryStart),
     orderBy("timestamp", "asc")
   );
@@ -428,17 +455,14 @@ export const getHistoryLogs = async (userId: string, daysBack: number = 365): Pr
   const newLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CounterLog));
 
   // 3. Merge & Deduplicate
-  // Use a Map to deduplicate by ID in case of overlap
   const logsMap = new Map<string, CounterLog>();
   
-  // Fill with cached logs that are still within the time window
   cachedLogs.forEach(log => {
       if (log.timestamp >= cutoff) {
           logsMap.set(log.id, log);
       }
   });
 
-  // Add/Overwrite with new logs
   newLogs.forEach(log => {
       logsMap.set(log.id, log);
   });
@@ -452,22 +476,21 @@ export const getHistoryLogs = async (userId: string, daysBack: number = 365): Pr
           lastFetch: now
       }));
   } catch (e) {
-      // LocalStorage might be full
       console.warn("Failed to save logs cache", e);
   }
 
   return mergedLogs;
 };
 
-// Optimized reset that uses existing state instead of querying
 export const resetCountersBatch = async (userId: string, counterIds: string[]) => {
     if (!secondaryDb || counterIds.length === 0) return;
+    const effectiveUid = getEffectiveUid(userId);
     
     const todayStr = new Date().toISOString().split('T')[0];
     const batch = writeBatch(secondaryDb);
     
     counterIds.forEach(id => {
-        const ref = doc(secondaryDb!, "users", userId, "counters", id);
+        const ref = doc(secondaryDb!, "users", effectiveUid, "counters", id);
         batch.update(ref, {
             count: 0,
             lastResetDate: todayStr,
@@ -483,9 +506,10 @@ export const subscribeToTodoLists = (
   callback: (lists: TodoList[]) => void
 ) => {
   if (!secondaryDb) return () => {};
+  const effectiveUid = getEffectiveUid(userId);
   
   const q = query(
-    collection(secondaryDb, "users", userId, "todoLists"),
+    collection(secondaryDb, "users", effectiveUid, "todoLists"),
     orderBy("updatedAt", "desc")
   );
 
@@ -497,6 +521,7 @@ export const subscribeToTodoLists = (
 
 export const addTodoList = async (userId: string, title: string, color: string) => {
   if (!secondaryDb) throw new Error("No DB");
+  const effectiveUid = getEffectiveUid(userId);
   
   const newList = {
     title,
@@ -506,13 +531,14 @@ export const addTodoList = async (userId: string, title: string, color: string) 
     updatedAt: Date.now()
   };
   
-  await addDoc(collection(secondaryDb, "users", userId, "todoLists"), newList);
+  await addDoc(collection(secondaryDb, "users", effectiveUid, "todoLists"), newList);
 };
 
 export const updateTodoList = async (userId: string, listId: string, data: Partial<TodoList>) => {
   if (!secondaryDb) throw new Error("No DB");
+  const effectiveUid = getEffectiveUid(userId);
   
-  const listRef = doc(secondaryDb, "users", userId, "todoLists", listId);
+  const listRef = doc(secondaryDb, "users", effectiveUid, "todoLists", listId);
   await updateDoc(listRef, {
     ...data,
     updatedAt: Date.now()
@@ -521,25 +547,26 @@ export const updateTodoList = async (userId: string, listId: string, data: Parti
 
 export const deleteTodoList = async (userId: string, listId: string) => {
   if (!secondaryDb) throw new Error("No DB");
-  await deleteDoc(doc(secondaryDb, "users", userId, "todoLists", listId));
+  const effectiveUid = getEffectiveUid(userId);
+  await deleteDoc(doc(secondaryDb, "users", effectiveUid, "todoLists", listId));
 };
 
 export const updateUserSettings = async (userId: string, settings: ThemeSettings) => {
     if (!secondaryDb) throw new Error("No DB");
-    await setDoc(doc(secondaryDb, "users", userId, "settings", "theme"), settings);
+    const effectiveUid = getEffectiveUid(userId);
+    await setDoc(doc(secondaryDb, "users", effectiveUid, "settings", "theme"), settings);
 };
 
 export const subscribeToUserSettings = (userId: string, callback: (settings: ThemeSettings) => void) => {
     if (!secondaryDb) return () => {};
-    return onSnapshot(doc(secondaryDb, "users", userId, "settings", "theme"), (doc) => {
+    const effectiveUid = getEffectiveUid(userId);
+    return onSnapshot(doc(secondaryDb, "users", effectiveUid, "settings", "theme"), (doc) => {
         if (doc.exists()) {
             callback(doc.data() as ThemeSettings);
         }
     });
 };
 
-// --- Config Management for Primary DB ---
-// We can update the secondary config stored in primary DB here
 export const updateSecondaryConfigInPrimary = async (userId: string, newConfig: FirebaseConfig) => {
     if (!primaryDb) throw new Error("Primary DB down");
     await setDoc(doc(primaryDb, "users", userId, "system", "dbConfig"), {
@@ -547,10 +574,3 @@ export const updateSecondaryConfigInPrimary = async (userId: string, newConfig: 
         updatedAt: Date.now()
     });
 };
-
-export const getStoredConfig = () => {
-    // Legacy support removal - we no longer use localstorage config
-    return null;
-}
-export const saveConfig = () => {}; 
-export const clearConfig = () => {};

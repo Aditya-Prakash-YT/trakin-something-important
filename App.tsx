@@ -259,6 +259,7 @@ export default function App() {
   
   // Banner State
   const [showLocalBanner, setShowLocalBanner] = useState(true);
+  const [bannerCountdown, setBannerCountdown] = useState(7);
 
   // Lazy Loading States
   const [hasVisitedAnalytics, setHasVisitedAnalytics] = useState(false);
@@ -305,13 +306,23 @@ export default function App() {
   const pendingDeltas = useRef<Record<string, number>>({});
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  // Auto-hide local banner after 7 seconds
+  // Auto-hide local banner after 7 seconds with countdown
   useEffect(() => {
-    const timer = setTimeout(() => {
-        setShowLocalBanner(false);
-    }, 7000);
-    return () => clearTimeout(timer);
-  }, []);
+    if (!showLocalBanner) return;
+    
+    const timer = setInterval(() => {
+        setBannerCountdown((prev) => {
+            if (prev <= 1) {
+                clearInterval(timer);
+                setShowLocalBanner(false);
+                return 0;
+            }
+            return prev - 1;
+        });
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [showLocalBanner]);
 
   // Handle Theme Update
   const handleThemeChange = (newSettings: Partial<ThemeSettings>) => {
@@ -742,9 +753,14 @@ export default function App() {
         
         {/* Global Local Mode Banner */}
         {!user && showLocalBanner && (
-            <div className="mx-4 md:mx-6 mt-4 bg-yellow-900/10 border border-yellow-700/30 p-3 rounded-xl text-yellow-500 text-xs flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
-                <CloudOff size={16} className="shrink-0 mt-0.5" />
-                <span><strong>Local Mode:</strong> Data is saved on this device. Sign in to sync.</span>
+            <div className="mx-4 md:mx-6 mt-4 bg-yellow-900/10 border border-yellow-700/30 p-3 rounded-xl text-yellow-500 text-xs flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-start gap-2">
+                    <CloudOff size={16} className="shrink-0 mt-0.5" />
+                    <span><strong>Local Mode:</strong> Data is saved on this device. Sign in to sync.</span>
+                </div>
+                <div className="shrink-0 font-mono font-bold bg-yellow-900/30 px-2 py-0.5 rounded text-[10px] min-w-[32px] text-center">
+                    {bannerCountdown}s
+                </div>
             </div>
         )}
 

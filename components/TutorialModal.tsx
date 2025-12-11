@@ -243,18 +243,16 @@ service cloud.firestore {
                       <span className="text-gray-500 text-xs block mt-1">(You do not need to set up Firebase Hosting)</span>
                     </li>
                     <li className="pl-2">
-                      Copy the object inside `const firebaseConfig = <span>{'{...}'}</span>;`. 
+                      Copy the code object under "SDK setup and configuration".
                     </li>
                     <li className="pl-2 font-bold text-white">
-                      Paste this JSON into the TallyMaster configuration box.
+                      Paste the code directly into the TallyMaster configuration box. You do not need to convert it to JSON.
                     </li>
                   </ol>
                   
                    <div className="bg-gray-950 p-4 rounded-xl border border-gray-800 font-mono text-xs text-gray-500">
                      <span className="text-purple-400">const</span> firebaseConfig = <span className="text-yellow-400">{'{'}</span><br/>
                      &nbsp;&nbsp;apiKey: <span className="text-green-400">"..."</span>,<br/>
-                     &nbsp;&nbsp;authDomain: <span className="text-green-400">"..."</span>,<br/>
-                     &nbsp;&nbsp;projectId: <span className="text-green-400">"..."</span>,<br/>
                      &nbsp;&nbsp;...<br/>
                      <span className="text-yellow-400">{'}'}</span>;
                   </div>
